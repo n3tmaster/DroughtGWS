@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="dataSourceStorageLocal">
+    <data-source name="PostgreSQL - gisdb@149.139.16.84" uuid="f507e933-93ed-4c02-8daf-61d948162264">
+      <database-info product="PostgreSQL" version="9.6.3" jdbc-version="4.2" driver-name="PostgreSQL JDBC Driver" driver-version="42.1.1">
+        <identifier-quote-string>&quot;</identifier-quote-string>
+      </database-info>
+      <case-sensitivity plain-identifiers="lower" quoted-identifiers="exact" />
+      <secret-storage>master_key</secret-storage>
+      <user-name>postgres</user-name>
+      <introspection-schemas>gisdb:postgis,public</introspection-schemas>
+      <resolve-scope>gisdb:public</resolve-scope>
+      <unqualified-resolve-schemas>gisdb:public</unqualified-resolve-schemas>
+    </data-source>
+  </component>
+</project>
