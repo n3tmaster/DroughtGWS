@@ -2,7 +2,7 @@
 --it creates new spi3 empty rasters and inserts them into SPI3 table
 --referring the coverage of rainfall estimation dataset
 --Ref. SPI3 - id_imgtype = 7
-create or replace function postgis.prepare_spi3_dataset()
+create or replace function postgis.prepare_spi3_dataset(poly_in geometry, x_div integer, y_div integer)
 RETURNS boolean AS
 $$
 DECLARE
@@ -21,9 +21,15 @@ DECLARE
 BEGIN
 
 
-    select ST_Width(rast), ST_Height(rast), rast into xwidth, yheight, rast_exp
+
+    select ST_Clip(rast , poly_in , true) into  rast_exp
     from   postgis.precipitazioni
     limit 1;
+
+    xwidth := ceil(ST_Width(rast_exp) / x_div);
+    yheight := ceil(ST_Height(rast_exp) / y_div);
+
+    RAISE NOTICE 'xwidth: %, yheight: %', xwidth, yheight;
 
     FOR rowrecord IN
     SELECT extract(month from dtime) as dmonth, extract(year from dtime) as dyear
@@ -53,7 +59,7 @@ BEGIN
 
              -- insert new empty raster into SPI3 table
 
-             EXECUTE 'INSERT INTO postgis.spi3 (id_acquisizione, rast) SELECT $1, ST_Tile(ST_AddBand(ST_MakeEmptyRaster($2),''32BF'',-1.0,-999),200,200,FALSE)' USING id_is, rast_exp;
+             EXECUTE 'INSERT INTO postgis.spi3 (id_acquisizione, rast) SELECT $1, ST_Tile(ST_AddBand(ST_MakeEmptyRaster($2),''32BF'',-1.0,-999),$3,$4,FALSE)' USING id_is, rast_exp, xwidth, yheight;
 
 
              RAISE NOTICE 'new SPI3 raster tiles created for %',to_timestamp(''||rowrecord.dmonth||' '||rowrecord.dyear, 'MM YYYY');
@@ -101,17 +107,23 @@ BEGIN
     from   postgis.precipitazioni
     limit 1;
 
+    RAISE NOTICE 'w: % , h: %',ST_Width(rast_exp), ST_Height(rast_exp);
+
     FOR rowrecord IN
     SELECT extract(month from dtime) as dmonth, extract(year from dtime) as dyear
     			FROM postgis.acquisizioni
    				WHERE id_imgtype = 1
                 GROUP BY 1,2
 				ORDER BY 2,1 LOOP
+
+
+		RAISE NOTICE 'checking for %',to_timestamp(''||rowrecord.dmonth||' '||rowrecord.dyear, 'MM YYYY');
         -- checking if this timestamp exists in SPI3 dataset
         IF EXISTS (SELECT id_acquisizione INTO id_is FROM postgis.acquisizioni
                 WHERE id_imgtype=7
                 AND extract(month from dtime) = rowrecord.dmonth
                 AND extract(year from dtime) = rowrecord.dyear) THEN
+
              RAISE NOTICE 'table exists, it will be skipped';
 
              RAISE NOTICE 'ID: %', id_is;
@@ -129,15 +141,11 @@ BEGIN
              WHERE  id_imgtype = 7;
 
 
-
-             -- insert new empty raster into SPI3 table
-
-
         END IF;
 
         EXECUTE 'INSERT INTO postgis.spi3 (id_acquisizione, rast) SELECT $1, ST_AddBand(ST_MakeEmptyRaster($2),''32BF'',-1.0,-999)' USING id_is, rast_exp;
 
-        RAISE NOTICE 'new SPI3 raster tiles created for %',to_timestamp(''||rowrecord.dmonth||' '||rowrecord.dyear, 'MM YYYY');
+        RAISE NOTICE 'spi3 inserted';
 
 
     END LOOP;
@@ -151,6 +159,8 @@ BEGIN
 END;
 $$
 language 'plpgsql';
+
+
 
 ﻿--prepare spi6 dataset
 --it creates new spi6 empty rasters and inserts them into SPI3 table
@@ -534,8 +544,6 @@ BEGIN
             v_max := array_length(pixel_vector, 1);
 
 
-
-
             LOOP
                 EXIT WHEN v_iterator > v_max;
 
@@ -579,7 +587,7 @@ language 'plpgsql';
 
 
 ﻿-- calculate SPI data for every timestamps at selected step and selected tile
-create or replace function postgis.prepare_spi_data(step_in INTEGER, x_coord INTEGER, y_coord INTEGER, x_coord_start DOUBLE PRECISION, y_coord_start DOUBLE PRECISION)
+create or replace function postgis.prepare_spi_data(step_in INTEGER, x_coord INTEGER, y_coord INTEGER, x_coord_start DOUBLE PRECISION, y_coord_start DOUBLE PRECISION, x0 INTEGER, y0 INTEGER)
 RETURNS BOOLEAN AS
 $$
 DECLARE
@@ -647,8 +655,8 @@ BEGIN
                pixel_vector[(v_iterator)][1],
                pixel_vector[(v_iterator)][2],
                imgtype_in,
-               x_coord,
-               y_coord,
+               x0,
+               y0,
                x_coord_start,
                y_coord_start;
 
@@ -669,6 +677,8 @@ BEGIN
 
 
 RETURN true;
+
+EXCEPTION WHEN OTHERS THEN RETURN false;
 END;
 
 $$

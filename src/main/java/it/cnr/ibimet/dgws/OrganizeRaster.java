@@ -252,16 +252,31 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
 
     @POST
-    @Path("/j_update_spi/{step}")
-    public Response updateSPI(@PathParam("step") String step){
+    @Path("/j_update_spi/{step}/{srid}/{minx}/{miny}/{maxx}/{maxy}")
+    public Response updateSPI(@PathParam("step") String step,
+                              @PathParam("minx") String minx,
+                              @PathParam("miny") String miny,
+                              @PathParam("maxx") String maxx,
+                              @PathParam("maxy") String maxy,
+                              @PathParam("srid") String srid){
 
         TDBManager tdb=null;
         int width, height;
         int width_parc, height_parc;
         int imgt=7;
         int i=1;
+        int n_threads=-1;
+        int id_is=-1;
+        String polygon = "POLYGON(("+
+                        minx+" "+miny+","+
+                        minx+" "+maxy+","+
+                        maxx+" "+maxy+","+
+                        maxx+" "+miny+","+
+                        minx+" "+miny+"))";
+
         Long resultFuture = new Long(0);
 
+        System.out.println("Polygon: "+polygon);
         //TODO: da migliorare
         FutureTask futureTask_1,futureTask_2,futureTask_3,futureTask_4,futureTask_5,futureTask_6,futureTask_7,futureTask_8,futureTask_9,futureTask_10;
 
@@ -277,15 +292,37 @@ public class OrganizeRaster extends Application implements SWH4EConst {
                 imgt=9;
             }
 
+            //get the number of tiles and related threads
+            sqlString = "select count(*), id_acquisizione " +
+                    "   from   postgis.spi" + step + " " +
+                    "   where  id_acquisizione = ( select min(id_acquisizione) from postgis.acquisizioni " +
+                    "                              where id_imgtype = "+imgt+" ) "+
+                    "   and    ST_Intersects(rast, ST_GeomFromText('"+ polygon + "',"+srid+"), 1) "+
+                    "   group by 2";
+            tdb.setPreparedStatementRef(sqlString);
+
+            tdb.runPreparedQuery();
+
+            if(tdb.next()){
+                n_threads = tdb.getInteger(1);
+                id_is = tdb.getInteger(2);
+                System.out.println("n_threads: "+n_threads+ " ids: "+id_is);
+            }else{
+
+                System.out.println("Nothing was found");
+
+                throw new Exception();
+            }
             //get overall extent of dataset and ul coordinates
 
+
+
             sqlString=" select ST_Width(rast), ST_Height(rast), ST_UpperLeftX(rast), ST_UpperLeftY(rast) " +
-                    "   from   postgis.spi" + step + " INNER JOIN postgis.acquisizioni USING (id_acquisizione) " +
-                    "   where  id_imgtype = "+imgt+" "+
-                    "   order by dtime limit 10";
+                    "   from   postgis.spi" + step +
+                    "   where  id_acquisizione = "+id_is;
 
 
-            System.out.println("Get overall extent - SQL: "+sqlString);
+          //  System.out.println("Get overall extent - SQL: "+sqlString);
 
             tdb.setPreparedStatementRef(sqlString);
 
@@ -301,7 +338,7 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
 
             // Create a new ExecutorService with 10 thread to execute and store the Futures. Each one represent one spi thread
-            ExecutorService executor = Executors.newFixedThreadPool(10);
+            ExecutorService executor = Executors.newFixedThreadPool(n_threads);
             List<FutureTask> taskList = new ArrayList<FutureTask>();
             while (tdb.next()) {
 
