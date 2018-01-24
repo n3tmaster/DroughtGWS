@@ -1,0 +1,10 @@
+<component name="libraryTable">
+  <library name="org.jbundle.util.osgi.wrapped:org.jbundle.util.osgi.wrapped.org.apache.http.client:4.1.2" type="repository">
+    <properties maven-id="org.jbundle.util.osgi.wrapped:org.jbundle.util.osgi.wrapped.org.apache.http.client:4.1.2" />
+    <CLASSES>
+      <root url="jar://$MAVEN_REPOSITORY$/org/jbundle/util/osgi/wrapped/org.jbundle.util.osgi.wrapped.org.apache.http.client/4.1.2/org.jbundle.util.osgi.wrapped.org.apache.http.client-4.1.2.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

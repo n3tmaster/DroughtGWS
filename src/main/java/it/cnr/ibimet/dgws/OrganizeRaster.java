@@ -12,6 +12,7 @@ import javax.ws.rs.core.Application;
 import javax.ws.rs.core.Response;
 import java.io.InputStream;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Vector;
@@ -278,9 +279,13 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
         System.out.println("Polygon: "+polygon);
         //TODO: da migliorare
-        FutureTask futureTask_1,futureTask_2,futureTask_3,futureTask_4,futureTask_5,futureTask_6,futureTask_7,futureTask_8,futureTask_9,futureTask_10;
+  //      FutureTask futureTask_1,futureTask_2,futureTask_3,futureTask_4,futureTask_5,futureTask_6,futureTask_7,futureTask_8,futureTask_9,futureTask_10;
 
         try {
+
+            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+            System.out.println("SPI calculation, starting time: "+timestamp);
+
             tdb = new TDBManager("jdbc/ssdb");
             String sqlString=null;
 
@@ -297,8 +302,11 @@ public class OrganizeRaster extends Application implements SWH4EConst {
                     "   from   postgis.spi" + step + " " +
                     "   where  id_acquisizione = ( select min(id_acquisizione) from postgis.acquisizioni " +
                     "                              where id_imgtype = "+imgt+" ) "+
-                    "   and    ST_Intersects(rast, ST_GeomFromText('"+ polygon + "',"+srid+"), 1) "+
+                    "   and    ST_Intersects(rast, ST_GeomFromText('"+ polygon + "',"+srid+")) "+
                     "   group by 2";
+
+      //      System.out.println("SQL: "+ sqlString);
+
             tdb.setPreparedStatementRef(sqlString);
 
             tdb.runPreparedQuery();
@@ -362,6 +370,8 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
             System.out.println("Parallel threads have been finished");
 
+            timestamp = new Timestamp(System.currentTimeMillis());
+            System.out.println("ending time: "+timestamp);
             // Shutdown the ExecutorService
 
             executor.shutdown();
