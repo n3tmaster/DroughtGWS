@@ -1792,6 +1792,8 @@ public class GetRaster  extends Application implements SWH4EConst{
      * @param  normalize (Optional true : perform image reclassification between 0-100 values. Default is true)
      * @return Response with image (or error message)
      */
+
+    //TODO: aggiungere parametro per calcolo in background senza rilascio di immagini (pensare ad overload di func)
     @GET
     @Produces("image/png")
     @Path("/j_calc_tci")

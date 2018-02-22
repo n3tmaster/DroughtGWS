@@ -359,4 +359,9 @@ public interface SWH4EConst {
                     " 100 11 44 122 255\n" +
                     " nv 191 191 191 0";
 
+
+
+    public final static String NORMALIZED = "normalized";
+    public final static String REAL = "real";
+
 }

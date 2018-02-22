@@ -365,7 +365,7 @@ $BODY$
   LANGUAGE plpgsql VOLATILE
 
 
-create or replace function postgis.calculate_evi2vci(
+create or replace function postgis.calculate_vci(
     dtime_in timestamp, store boolean
     )
 RETURNS RASTER AS
@@ -421,7 +421,7 @@ BEGIN
  FOR vci_i IN select b.rast as rastin
  			from postgis.acquisizioni a inner join postgis.evi b using (id_acquisizione)
             where extract('doy' from a.dtime) = doy_in
-            and   extract('year' from a.dtime) <> year_in
+            and   extract('year' from a.dtime) < year_in
             and   a.id_imgtype = imgtype_in
             order by a.dtime
  LOOP
@@ -486,3 +486,5 @@ BEGIN
 END;
 $BODY$
   LANGUAGE plpgsql VOLATILE
+
+

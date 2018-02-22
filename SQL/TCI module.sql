@@ -122,11 +122,13 @@ BEGIN
  lstmin := st_addband(st_makeemptyraster(st_band(lstlast,1)),'16BUI'::text);
  tci    := st_addband(st_makeemptyraster(st_band(lstlast,1)),'32BF'::text);
 
+
+
  RAISE NOTICE 'Calculating min and max rasters';
  FOR lst_i IN select b.rast as rastin
  			from postgis.acquisizioni a inner join postgis.lst b using (id_acquisizione)
             where extract('doy' from a.dtime) = doy_in
-            and   extract('year' from a.dtime) <> year_in
+            and   extract('year' from a.dtime) < year_in
             and   a.id_imgtype = imgtype_in
             order by a.dtime
  LOOP

@@ -269,5 +269,131 @@ public class Calculate  extends Application implements SWH4EConst{
 
 
 
-    
+
+
+    @GET
+    @Produces(MediaType.TEXT_PLAIN)
+    @Path("/{imgtype}/{year}/{doy}/{normalized}")
+    public Response calculateTCI(@PathParam("imgtype") String imgtype,
+                                 @PathParam("year") String year,
+                                 @PathParam("doy") String doy,
+                                 @PathParam("normalized") String normalized){
+
+        byte[] imgOut=null;
+
+
+        boolean create_it;
+        TDBManager tdb=null;
+        GregorianCalendar gc = new GregorianCalendar();
+        Vector<InputStream> inputStreams = new Vector<InputStream>();
+        String normalize2;
+        try {
+
+
+
+            if(normalized.toLowerCase().matches(NORMALIZED)){
+            //    normalize = "st_reclass(rast,1,'[0.0-100.0]:1-100,(100.0-32767.0]:100','8BUI')";
+                normalize2 = "st_reclass(postgis.calculate_"+imgtype+"(?,true),1,'[0.0-100.0]:1-100,(100.0-32767.0]:100','8BUI')";
+            }else if(normalized.toLowerCase().matches(REAL)){
+
+            //    normalize = "rast";
+                normalize2 = "postgis.calculate_"+imgtype+"(?,true)";
+            }else{
+
+                //Error
+                normalize2="";
+                return Response.status(500).entity("Missing NORMALIZED parameter!").build();
+
+            }
+
+            gc.set(Calendar.YEAR, Integer.parseInt(year));
+            gc.set(Calendar.HOUR_OF_DAY,0);
+            gc.set(Calendar.MINUTE,0);
+            gc.set(Calendar.SECOND,0);
+            gc.set(Calendar.MILLISECOND,0);
+            gc.set(Calendar.DAY_OF_YEAR, Integer.parseInt(doy));
+
+
+
+            tdb = new TDBManager("jdbc/ssdb");
+            String sqlString=null;
+
+            //Check if TCI exists
+            sqlString="select rast, a.id_acquisizione " +
+                    "from postgis.tci as a inner join postgis.acquisizioni as b using (id_acquisizione) "+
+                    "where b.dtime = ?";
+
+
+            tdb.setPreparedStatementRef(sqlString);
+
+            tdb.setParameter(DBManager.ParameterType.DATE,gc,1);
+
+            tdb.runPreparedQuery();
+
+            if (tdb.next()) {
+
+                System.out.println("TCI exists...it will be recreated");
+
+
+                String id_acquisizione = ""+tdb.getInteger(2);
+                sqlString="delete from postgis.tci where id_acquisizione = "+id_acquisizione;
+                tdb.setPreparedStatementRef(sqlString);
+                tdb.performInsert();
+
+                System.out.print("old image deleted...");
+
+
+                sqlString="delete from postgis.acquisizioni where id_acquisizione = "+id_acquisizione;
+                tdb.setPreparedStatementRef(sqlString);
+                tdb.performInsert();
+                System.out.println("old acquisizione deleted");
+                create_it=true;
+
+            }
+
+
+
+            sqlString="select "+normalize2;
+
+
+
+            tdb.setPreparedStatementRef(sqlString);
+
+            tdb.setParameter(DBManager.ParameterType.DATE,gc,1);
+
+            tdb.runPreparedQuery();
+
+            if (tdb.next()) {
+                try{
+                    tdb.closeConnection();
+                }catch (Exception ee){
+                    System.out.println("Error "+ee.getMessage());
+                }
+                return  Response.status(Response.Status.OK).entity("TCI image of "+doy+"-"+year+" calculated ").build();
+            }else{
+                try{
+                    tdb.closeConnection();
+                }catch (Exception ee){
+                    System.out.println("Error "+ee.getMessage());
+                }
+                return  Response.status(Response.Status.OK).entity("Error occurred: maybe the TCI image of "+doy+"-"+year+" doesn't exist ").build();
+            }
+
+        }catch(Exception e){
+            System.out.println("Error  : "+e.getMessage());
+
+            try{
+                tdb.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }
+
+
+
+    }
+
+
 }
