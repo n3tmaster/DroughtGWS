@@ -1,0 +1,16 @@
+{
+  "dataset": "TCI",
+  "auth_id": "425a1dfd-6121-4314-a75b-eae3dacf5255",
+  "ckan_base_url": "http://149.139.16.84:5003",
+  "geoserver_base_url":"https://droughtsdi.fi.ibimet.cnr.it",
+  "ws_base_url":"https://droughtsdi.fi.ibimet.cnr.it",
+  "dburl": "jdbc:postgresql://149.139.16.84:5432/gisdb",
+  "dbuser":"satserv",
+  "dbpass":"ss!2017pwd",
+  "dataset_type":"TCI",
+  "mode": "init_ckan_db",
+  "geoserver_path":"",
+  "geoserver_cred":"",
+  "geoserver_func":"",
+  "geoserver_lyr_start":""
+}
