@@ -10,8 +10,9 @@
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>
-      <module name="CkanFiller" target="1.6" />
-      <module name="DroughtGWS" target="1.6" />
+      <module name="CkanFiller" target="1.8" />
+      <module name="dogui" target="1.5" />
+      <module name="DroughtGWS" target="1.8" />
     </bytecodeTargetLevel>
   </component>
 </project>
