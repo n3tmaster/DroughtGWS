@@ -34,6 +34,8 @@
           <element id="library" level="project" name="Maven: org.javassist:javassist:3.20.0-GA" />
           <element id="library" level="project" name="Maven: org.postgresql:postgresql:42.0.0" />
           <element id="library" level="project" name="utils-1" />
+          <element id="library" level="project" name="Maven: org.gdal:gdal:2.2.0" />
+          <element id="library" level="project" name="javax.mail:mail:1.4.7" />
         </element>
       </element>
       <element id="javaee-facet-resources" facet="DroughtGWS/web/Web" />

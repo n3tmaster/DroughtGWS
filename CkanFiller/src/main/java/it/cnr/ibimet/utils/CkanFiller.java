@@ -4,10 +4,10 @@ package it.cnr.ibimet.utils;
 import it.lr.libs.DBManager;
 
 
-//import jdk.nashorn.internal.parser.JSONParser;
-//import org.codehaus.jettison.json.JSONArray;
-//import org.codehaus.jettison.json.JSONObject;
-
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.params.BasicHttpParams;
+import org.apache.http.params.HttpConnectionParams;
+import org.apache.http.params.HttpParams;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 
@@ -20,15 +20,16 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.DefaultHttpClient;
 import org.json.simple.parser.JSONParser;
+import org.json.simple.parser.ParseException;
 
 
-import java.io.BufferedReader;
-import java.io.FileReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.util.Calendar;
-import java.util.GregorianCalendar;
-import java.util.StringTokenizer;
+import java.io.*;
+import java.net.SocketTimeoutException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.*;
+import java.util.concurrent.TimeoutException;
 
 
 /**
@@ -49,23 +50,30 @@ public class CkanFiller {
     private final static String GEOSERVER_BASE_URL = "/geoserver/wms/reflect?";
     private final static String GEOSERVER_LAYER = "layers";
 
+    private final static String REST_BASE_GEOSERVER = "/geoserver/rest";
+    private final static String REST_GEOSERVER_WORKSPACES = "/workspaces";
+    private final static String REST_GEOSERVER_COVERAGESTORES = "/coveragestores";
+    private final static String REST_GEOSERVER_COVERAGES = "/coverages";
+    private final static String WORKSPACE_TCI = "/TCI";
+    private final static String WORKSPACE_VCI = "/VCI";
+    private final static String WORKSPACE_VHI = "/VHI";
+    private final static String WORKSPACE_SPI3 = "/SPI3";
+    private final static String WORKSPACE_SPI6 = "/SPI6";
+    private final static String WORKSPACE_SPI12 = "/SPI12";
 
     //DO - REST references
-
     private final static String REST_BASE_DOWNLOAD = "/dgws/api/download";
+    private final static String REST_J_GET_IMAGE = "/j_get_image";
     private final static String REST_J_GET_WHOLE_PNG = "/j_get_whole_png";     ///{image_type}/{year}/{doy}";
     private final static String REST_J_GET_WHOLE_GTIFF = "/j_get_whole_gtiff";     ///{image_type}/{year}/{doy}";
-    private final static String REST_J_GET_WHOLE_AAIGRID= "/j_get_whole_png";     ///{image_type}/{year}/{doy}";
+    private final static String REST_J_GET_WHOLE_AAIGRID= "/j_get_whole_aaigrid";     ///{image_type}/{year}/{doy}";
     private final static String REST_J_GET_WHOLE_WMS= " ";     ///{image_type}/{year}/{doy}";
     private final static String REST_J_CALC_TCI = "/j_calc_tci";
 
 
 
-
     //////
-
-
-    private final static String NAME_SUFFIX = "_id_v5";
+    private final static String NAME_SUFFIX = "_id_v14";
     private final static String KML_FORMAT = "KML";
     private final static String CSV_FORMAT = "CSV";
     private final static String WMS_FORMAT = "WMS";
@@ -90,8 +98,15 @@ public class CkanFiller {
     //tablenames
     private final static String TBL_PRECIPITAZIONE = "precipitazioni";
     private final static String TBL_TCI = "tci";
+    private final static String TBL_VCI = "vci";
+    private final static String TBL_VHI = "vhi";
+    private final static String TBL_SPI3 = "spi3";
+    private final static String TBL_SPI6 = "spi6";
+    private final static String TBL_SPI12 = "spi12";
 
     //input parameters
+    private final static String CREATE_STORE = "create_store";
+    private final static String CREATE_COVERAGE = "create_coverage";
     private final static String CREATE_PACKAGE = "create_package";
     private final static String INIT_NEW_STATION = "init_new_dataset";
     private final static String CREATE_ALL_RESOURCES = "create_all_resources";
@@ -105,6 +120,7 @@ public class CkanFiller {
 
     private final static String INIT_CKAN_DB = "init_ckan_db";
 
+    private String mode;
     private String dataset;
     private String auth_id;
     private String owner;
@@ -123,12 +139,14 @@ public class CkanFiller {
     private String datasettype;
     private int timestep;
 
+    private String geoserver_workspace;
     private String notes;
     private String owner_org;
     private String maintainer;
     private String author;
     private String author_email;
     private String maintainer_email;
+    private String geoserver_path, geoserver_cred, geoserver_func, geoserver_lyr_start;
 
     private JSONArray groups_in;
     private JSONArray extras_in,extras_head;
@@ -172,7 +190,8 @@ public class CkanFiller {
                 this.source_geoserver_url = source_geoserver_url;
                 this.extras_in = new JSONArray();
         this.dbcontext = "";
-
+        this.geoserver_path = "";
+        this.geoserver_cred = "";
         if(datasettype.matches(TCI)){
             this.datasettype = datasettype;
             this.timestep = MONTHLY;
@@ -190,6 +209,96 @@ public class CkanFiller {
         }
 
     }
+
+
+
+    public CkanFiller(JSONObject settings) throws Exception {
+        this.dataset = settings.get("dataset").toString();
+        this.base_url = settings.get("ckan_base_url").toString();
+        this.source_ws_base_url = settings.get("ws_base_url").toString();
+        this.dburl = settings.get("dburl").toString();
+        this.dbuser = settings.get("dbuser").toString();
+        this.dbpass = settings.get("dbpass").toString();
+        this.auth_id = settings.get("auth_id").toString();
+        this.datasettype = settings.get("dataset_type").toString();
+        this.dbcontext = "";
+        this.source_geoserver_url = settings.get("geoserver_base_url").toString();
+        this.geoserver_workspace  = this.dataset;
+        this.geoserver_path = settings.get("geoserver_path").toString();
+        this.geoserver_cred = settings.get("geoserver_cred").toString();
+        this.geoserver_func = settings.get("geoserver_func").toString();
+        this.geoserver_lyr_start = settings.get("geoserver_lyr_start").toString();
+    }
+
+    public CkanFiller(JSONObject settings,
+                      JSONObject pkg_info, JSONArray groups_in, JSONArray tags_in, JSONArray extras_in) throws Exception{
+        this.dataset = settings.get("dataset").toString();
+        this.base_url = settings.get("ckan_base_url").toString();
+        this.source_ws_base_url = settings.get("ws_base_url").toString();
+        this.dburl = settings.get("dburl").toString();
+        this.dbuser = settings.get("dbuser").toString();
+        this.dbpass = settings.get("dbpass").toString();
+        this.auth_id = settings.get("auth_id").toString();
+        this.datasettype = settings.get("dataset_type").toString();
+
+        this.pkg_info = pkg_info;
+        this.groups_in = groups_in;
+        this.tags_in = tags_in;
+        this.extras_head = extras_in;
+        this.source_geoserver_url = settings.get("geoserver_base_url").toString();
+        this.extras_in = new JSONArray();
+        this.dbcontext = "";
+        this.geoserver_workspace  = this.dataset;
+        this.geoserver_path = settings.get("geoserver_path").toString();
+        this.geoserver_cred = settings.get("geoserver_cred").toString();
+        this.geoserver_func = settings.get("geoserver_func").toString();
+        this.geoserver_lyr_start = settings.get("geoserver_lyr_start").toString();
+        this.mode = settings.get("mode").toString();
+
+        if(datasettype.matches(TCI)){
+
+            this.timestep = MONTHLY;
+            this.tbl_name = TBL_TCI;
+            this.geoserver_workspace = WORKSPACE_TCI;
+        }else if(datasettype.matches(PRECIPITAZIONE)) {
+
+            this.tbl_name = TBL_PRECIPITAZIONE;
+            this.timestep = DAILY;
+
+
+        }else if(datasettype.matches(VCI)){
+
+            this.timestep = MONTHLY;
+            this.tbl_name = TBL_VCI;
+            this.geoserver_workspace = WORKSPACE_VCI;
+        }else if(datasettype.matches(VHI)){
+
+            this.timestep = MONTHLY;
+            this.tbl_name = TBL_VHI;
+            this.geoserver_workspace = WORKSPACE_VHI;
+        }else if(datasettype.matches(SPI3)){
+
+            this.timestep = MONTHLY;
+            this.tbl_name = TBL_SPI3;
+            this.geoserver_workspace = WORKSPACE_SPI3;
+        }else if(datasettype.matches(SPI6)){
+
+            this.timestep = MONTHLY;
+            this.tbl_name = TBL_SPI6;
+            this.geoserver_workspace = WORKSPACE_SPI6;
+        }else if(datasettype.matches(SPI12)){
+
+            this.timestep = MONTHLY;
+            this.tbl_name = TBL_SPI12;
+            this.geoserver_workspace = WORKSPACE_SPI12;
+        }else{
+            throw new Exception("Datatype is wrong: "+datasettype);
+
+
+        }
+
+    }
+
 
     // constructor used by J2EE services
     // it uses context name in order to retrieve postgresql information
@@ -211,18 +320,20 @@ public class CkanFiller {
 
     }
 
+
     /**
      *
+     * @param: arg[0] settings_json : json file containing following settings
      *
-     * @param: arg[0] dataset : dataset name (ALL if you want to load all datasets)
-     * @param: arg[1] authorization : auth_id
-     * @param: arg[2] base_url : base url of CKAN installation
-     * @param: arg[3] source_geoserver_base_url: base url of geoserver API
-     * @param: arg[4] source_ws_base_url : base url of Web Services API for retriving metadata
-     * @param: arg[5] dburl : dburl of Drought Observatory DB
-     * @param: arg[6] dbuser : username for db access
-     * @param: arg[7] dbpass : password for db access
-     * @param: arg[8] dataset_type : dataset type
+     *                 1 - dataset                  : dataset name (ALL if you want to load all datasets)
+     *                 2 - authorization            : auth_id
+     *                 3 - base_url                 : base url of CKAN installation
+     *                 4 - source_geoserver_base_url: base url of geoserver API
+     *                 5 - source_ws_base_url       : base url of Web Services API for retriving metadata
+     *                 6 - dburl                    : dburl of Drought Observatory DB
+     *                 7 - dbuser                   : username for db access
+     *                 8 - dbpass                   : password for db access
+     *                 9 - dataset_type             : dataset type
      *                        -  PRECIPITAZIONE
      *                        -  EVI
      *                        -  SPI
@@ -232,72 +343,101 @@ public class CkanFiller {
      *                        -  SPI6
      *                        -  SPI12
      *                        -  NDVI
-     * @param: arg[9]  pkg_info: JSON file containing package metadata following CKAN specs.
-     * @param: arg[10] groups:   JSON file containing package groups information following CKAN specs.
-     * @param: arg[11] tags:     JSON file containing package tags following CKAN specs.
-     * @param: arg[12] extras:   JSON file containing package extras information (metadata) following CKAN specs.
-     * @param: arg[13] mode:     init_ckan_db - init new dataste series into CKAN db (with packages and data)
-     *
+     *                 10- geoserver                 : path to geoserver data directory used for creating MOSAIC
+     *                 11- mode                      : init_ckan_db - init new dataste series into CKAN db (with packages and data)
+     *                                                 mapping views for Geoserver and WMS
+     *                 12- geoserver_cred            : "user:password" for geoserver
+     * @param: arg[1] pkg_info: JSON file containing package metadata following CKAN specs.
+     * @param: arg[2] groups:   JSON file containing package groups information following CKAN specs.
+     * @param: arg[3] tags:     JSON file containing package tags following CKAN specs.
+     * @param: arg[4] extras:   JSON file containing package extras information (metadata) following CKAN specs.
      * @throws: Exception
      */
     public static void main(String[] args) throws Exception {
+        CkanFiller cf;
 
-        if(args.length != 14){
-            System.out.println("Parameter error");
-        }else{
+        //System.out.println("ARGS: "+ args.length);
 
-            JSONParser parser = new JSONParser();
+        if (args.length == 5) {
+        //    System.out.println("sono dentro");
+            try {
 
-            JSONObject j1 = (JSONObject) parser.parse(new FileReader(args[9]));
-            JSONArray j2 = (JSONArray) parser.parse(new FileReader(args[10]));
-            JSONArray j3 = (JSONArray) parser.parse(new FileReader(args[11]));
-            JSONArray j4 = (JSONArray) parser.parse(new FileReader(args[12]));
+                JSONParser parser = new JSONParser();
 
-            //TODO: da togliere la password hardcoded
-            CkanFiller cf = new CkanFiller(args[0],args[1],args[2],args[3],args[4],args[5],args[6],"ss!2017pwd",args[8], j1,j2,j3,j4);
-
-
-            try{
+                JSONObject j1 = (JSONObject) parser.parse(new FileReader(args[1]));
+                JSONArray j2 = (JSONArray) parser.parse(new FileReader(args[2]));
+                JSONArray j3 = (JSONArray) parser.parse(new FileReader(args[3]));
+                JSONArray j4 = (JSONArray) parser.parse(new FileReader(args[4]));
+                JSONObject j5 = (JSONObject) parser.parse(new FileReader(args[0]));
 
 
-                if(args[13].toLowerCase().matches(INIT_CKAN_DB)) {
+                cf = new CkanFiller(j5,j1,j2,j3,j4);
+
+                if (cf.mode.toLowerCase().matches(INIT_CKAN_DB)) {
                     //check station existance
-
                     cf.initCKAN();
-
                 }
-
-
-            }catch(Exception ex){
+            } catch (Exception ex) {
                 System.out.println(ex.getMessage());
 
-                System.out.println("CKAN_FILLER for SensorWebHub platform");
-                System.out.println("USAGE:  java -jar ./ckan_filler.jar station_id auth_id owner base_url dburl dbuser dbpass mode \t\t\n" );
-                System.out.println("OPTIONS: ");
-                System.out.println("station_id: name of mobile_station stored into SensorWebHub Database");
-                System.out.println("auth_id: authorization id of the user who registered into ckan database");
-                System.out.println("owner: organization id of datasets");
-                System.out.println("base_url: base url of CKAN installation");
-                System.out.println("swhrest_base_url: base url of SensorWeb Hub RESTful API");
-                System.out.println("dburl: SensorWeb Hub database url (PostgreSQL) ");
-                System.out.println("dbuser: username for SWH database");
-                System.out.println("dbpass: password for SWH database");
+                System.out.println("CKAN_FILLER for Drought Observatory");
+                System.out.println("USAGE:  java -jar ./ckan_filler.jar ------ \t\t\n");
+
+                System.out.println("\t\tcreate_package: create new dataset from specific station_id stored into SWH database");
+                System.out.println("\t\tcreate_all_resources: create all resources of specific mobile_station");
+                System.out.println("\t\tinit_new_station: create new dataset and init it bringing all data (daily)");
+                System.out.println("\t\tupdate_all_stations: update data of existing stations, automatically. if it doesn't exist it will be created in ckan database with all resources");
+
+            } finally {
+
+            }
+
+        }else if(args.length == 1) {
+            try {
+
+                System.out.println(args[0]);
+
+                JSONParser parser = new JSONParser();
+
+                JSONObject j5 = (JSONObject) parser.parse(new FileReader(args[0]));
+
+
+                cf = new CkanFiller(j5);
+
+                if(cf.geoserver_func.matches(CREATE_STORE)){
+                    System.out.println("creating store");
+                    cf.prepareGeoserverCreateStore();
+                }else if(cf.geoserver_func.matches(CREATE_COVERAGE)){
+                    cf.prepareGeoserverCreateCoverage();
+                }
+
+            } catch (Exception ex) {
+                System.out.println(ex.getMessage());
+
+                System.out.println("CKAN_FILLER for Drought Observatory");
+                System.out.println("USAGE:  java -jar ./ckan_filler.jar ------ \t\t\n");
+
+                System.out.println("\t\tcreate_package: create new dataset from specific station_id stored into SWH database");
+                System.out.println("\t\tcreate_all_resources: create all resources of specific mobile_station");
+                System.out.println("\t\tinit_new_station: create new dataset and init it bringing all data (daily)");
+                System.out.println("\t\tupdate_all_stations: update data of existing stations, automatically. if it doesn't exist it will be created in ckan database with all resources");
+
+            } finally {
+
+            }
+        }else{
+                System.out.println("Parameter error");
+                System.out.println("CKAN_FILLER for Drought Observatory");
+                System.out.println("USAGE:  java -jar ./ckan_filler.jar -----\t\t\n" );
+
                 System.out.println("mode: type of operation:");
                 System.out.println("\t\tcreate_package: create new dataset from specific station_id stored into SWH database");
                 System.out.println("\t\tcreate_all_resources: create all resources of specific mobile_station");
                 System.out.println("\t\tinit_new_station: create new dataset and init it bringing all data (daily)");
                 System.out.println("\t\tupdate_all_stations: update data of existing stations, automatically. if it doesn't exist it will be created in ckan database with all resources");
 
-            }finally{
 
-            }
         }
-
-
-
-
-
-        //
 
         return;
     }
@@ -320,7 +460,7 @@ public class CkanFiller {
             json.put("id",dataset.toLowerCase()+NAME_SUFFIX);
 
             //send json structure for package creation process
-            JSONObject retData = sendPost(json, url);
+            JSONObject retData = sendPost(json, url,true);
 
             //Check success or failure
             if(Boolean.parseBoolean(retData.get("success").toString())){
@@ -358,7 +498,7 @@ public class CkanFiller {
         try {
 
 
-            String url = base_url + REST_BASE_URL + RESOURCE_CREATE;
+            String url = this.base_url + REST_BASE_URL + RESOURCE_CREATE;
             //create json structure
             String url_of_resource_geotiff, url_of_resource_png, url_of_resource_aaigrid, url_of_resource_wms;
             JSONObject json = new JSONObject();
@@ -376,17 +516,13 @@ public class CkanFiller {
 
 
 
+                url_of_resource_geotiff = createWSURL(doy,REST_J_GET_IMAGE,GTIFF_FORMAT.toLowerCase());
 
+                url_of_resource_png = createWSURL(doy,REST_J_GET_IMAGE,PNG_FORMAT.toLowerCase());
 
+                url_of_resource_aaigrid = createWSURL(doy,REST_J_GET_IMAGE,AAIGRID_FORMAT.toLowerCase());
 
-                url_of_resource_geotiff = createWSURL(doy,GTIFF_FORMAT);
-
-
-                url_of_resource_png = createWSURL(doy,PNG_FORMAT);
-
-                url_of_resource_aaigrid = createWSURL(doy,AAIGRID_FORMAT);
-
-                url_of_resource_wms = createWSURL(doy,WMS_FORMAT,this.datasettype.toLowerCase()+"_"+this.pkg_year+"_"+doy+"_out");
+                url_of_resource_wms = createWSURL(this.datasettype.toLowerCase()+"_"+this.pkg_year+"_"+doy+"_out");
 
 
                 json.put("description",""+this.pkg_year+"-"+monthString+"-"+dayString + " DOY: "+doy + " GeoTIFF");
@@ -475,7 +611,7 @@ public class CkanFiller {
                     j2.put("view_type","geo_view");
                     j2.put("title","Map");
 
-                    retData = sendPost(j2, base_url + REST_BASE_URL + RESOURCE_VIEW_CREATE);
+                    retData = sendPost(j2, this.base_url + REST_BASE_URL + RESOURCE_VIEW_CREATE);
                     if(Boolean.parseBoolean(retData.get("success").toString())){
 
                         System.out.println("Resource view created");
@@ -520,8 +656,20 @@ public class CkanFiller {
     public int initCKAN() {
         TDBManager tdb=null;
         String monthString="", dayString="";
+        int extras2bedo=0,res2bedo=0; 
+        //Checking for geoserver_path existence
 
         try{
+
+
+
+
+            System.out.println("OK");
+
+
+            if(!geoserver_path.matches(""))
+                prepareGeoserverCatalog();
+
             System.out.print("createPackage: connecting...");
 
             if(dbcontext.matches("")){
@@ -531,9 +679,10 @@ public class CkanFiller {
             }
 
 
+
             tdb.openConnection();
-            System.out.println("OK");
-            String url = base_url + REST_BASE_URL + PACKAGE_CREATE;
+
+            String url = this.base_url + REST_BASE_URL + PACKAGE_CREATE;
             String sqlString="";
 
             switch(this.timestep){
@@ -603,11 +752,12 @@ public class CkanFiller {
 
                 System.out.println("Tags created");
                 //preparing groups : structure - key , value
+                System.out.println("closing Connection");
+                tdb.closeConnection();
+                extras2bedo = tdb.getInteger(4);
+                res2bedo=tdb.getInteger(5);
 
-
-
-
-                extractExtras(tdb.getInteger(4));
+                extractExtras(extras2bedo);
 
 
 
@@ -622,17 +772,27 @@ public class CkanFiller {
 
                 //Check success or failure
 
+                if(retData.containsKey("result")){
+                    if(retData.get("result").toString().matches("conflict")) {
+                        System.out.println("Package exists, it will be skipped ");
+                    } else if(Boolean.parseBoolean(retData.get("success").toString())){
+                        JSONObject thisObj = (JSONObject) retData.get("result");
 
-                if(Boolean.parseBoolean(retData.get("success").toString())){
+                        System.out.println("Package created. Id: "+thisObj.get("id"));
+                        package_id = thisObj.get("id").toString();
+
+                        //call resources creation procedure
+                        createResource(res2bedo, monthString,dayString);
+
+                    }
+                }else if(Boolean.parseBoolean(retData.get("success").toString())){
                     JSONObject thisObj = (JSONObject) retData.get("result");
 
                     System.out.println("Package created. Id: "+thisObj.get("id"));
                     package_id = thisObj.get("id").toString();
 
                     //call resources creation procedure
-                    createResource(tdb.getInteger(5), monthString,dayString);
-
-
+                    createResource(res2bedo, monthString,dayString);
 
                 }else{
                     System.out.println("Package Creation Error: ");
@@ -665,6 +825,636 @@ public class CkanFiller {
 
 
         return 0;
+    }
+
+
+    private void prepareGeoserverCatalog() { ;
+        TDBManager tdb=null;
+        String sqlString = "select postgis.organize_geoserver_views(?)";
+        JSONArray SRSArr = new JSONArray();
+        JSONObject SRS = new JSONObject();
+        JSONObject jsonRoot = new JSONObject();
+        JSONObject jsonWorkspace = new JSONObject();
+        JSONObject json = new JSONObject();
+        JSONObject jsonNamespace = new JSONObject();
+        JSONArray jsonKeywordsArr = new JSONArray();
+        JSONObject jsonKeywords = new JSONObject();
+        JSONObject jsonStore  = new JSONObject();
+        JSONArray jsonSupFormatArr = new JSONArray();
+        JSONObject jsonSupFormat = new JSONObject();
+        JSONObject jsonInterpolationMethods = new JSONObject();
+        JSONArray jsonInterpolationMethodsArr = new JSONArray();
+        JSONObject retData;
+        List<String> elements = new ArrayList<String>();
+        boolean closed = false;
+        SRSArr.add("EPSG:4326");
+
+        jsonSupFormatArr.add("GEOTIFF");
+        jsonSupFormatArr.add("GIF");
+        jsonSupFormatArr.add("PNG");
+        jsonSupFormatArr.add("JPEG");
+        jsonSupFormatArr.add("TIFF");
+        jsonSupFormatArr.add("ImageMosaicJDBC");
+        jsonSupFormatArr.add("ArcGrid");
+        jsonSupFormatArr.add("Gtopo30");
+        jsonSupFormatArr.add("ImageMosaic");
+        jsonSupFormatArr.add("GeoPackage (mosaic)");
+
+        jsonInterpolationMethodsArr.add("nearest neighbor");
+        jsonInterpolationMethodsArr.add("bilinear");
+        jsonInterpolationMethodsArr.add("bicubic");
+
+        System.out.print("createPackage: connecting...");
+
+        try {
+            if (dbcontext.matches("")) {
+                tdb = new TDBManager("org.postgresql.Driver", this.dburl, this.dbuser, this.dbpass);
+            } else {
+                tdb = new TDBManager(dbcontext);
+            }
+
+
+            tdb.openConnection();
+
+            tdb.setPreparedStatementRef(sqlString);
+            tdb.setParameter(DBManager.ParameterType.STRING, this.dataset.toLowerCase(), 1);
+
+            tdb.runPreparedQuery();
+
+
+            //TODO: implementing PL/pgSQL exceptions management
+
+            //Preparing element list
+            if (tdb.next()) {
+                System.out.println("Prepare Views procedure complete!");
+
+                System.out.print("creating mapping xml files...");
+
+                if(this.geoserver_lyr_start.matches("")) {
+                    sqlString = "select name, doi from " +
+                            "(select name,substring((trim(both '_out' from name)) from 11)::integer as doi from postgis.MOSAIC " +
+                            "where name like '"+this.dataset.toLowerCase()+"%' " +
+                            "order by doi) as fool ";
+                }else{
+                    String whereStr = this.geoserver_lyr_start.substring(0,(this.dataset.length()+6));
+                    whereStr = whereStr.replace("_out","");
+                    sqlString = "select name, doi from " +
+                            "(select name,substring((trim(both '_out' from name)) from "+(this.dataset.length()+7)+")::integer as doi from postgis.MOSAIC " +
+                            "where name like '"+this.geoserver_lyr_start.substring(0,(this.dataset.length()+7))+"%' " +
+                            "order by doi) as fool " +
+                            "where doi > "+whereStr;
+
+                }
+
+
+                tdb.setPreparedStatementRef(sqlString);
+
+
+                tdb.runPreparedQuery();
+                System.out.print("collecting elements...");
+                while (tdb.next()) {
+                    elements.add(tdb.getString(1));
+                }
+                System.out.println("done");
+            }
+
+
+            System.out.println("closing connection");
+            tdb.closeConnection();
+            System.out.println("done");
+            closed=true;
+            for (String thisElement : elements) {
+                System.out.print(thisElement + ".pgraster.xml...");
+
+                List<String> lines = new ArrayList<String>();
+                lines.add("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>");
+                lines.add("<!DOCTYPE ImageMosaicJDBCConfig [");
+                lines.add("<!ENTITY mapping PUBLIC \"mapping\"  \"mapping.pgraster.xml.inc\">");
+                lines.add("<!ENTITY connect PUBLIC \"connect\"  \"connect.pgraster.xml.inc\">");
+                lines.add("]>");
+
+                lines.add("<config version=\"1.0\">");
+                lines.add("<coverageName name=\"" + thisElement + "\"/>");
+                lines.add("<coordsys name=\"EPSG:4326\"/>");
+
+                lines.add("<!-- interpolation 1 = nearest neighbour, 2 = bipolar, 3 = bicubic -->");
+                lines.add("<scaleop  interpolation=\"1\"/>");
+                lines.add("<axisOrder ignore=\"false\"/>");
+                lines.add("&mapping;");
+                lines.add("&connect;");
+                lines.add("</config>");
+
+
+                Files.write(Paths.get(this.geoserver_path + "/" + thisElement + ".pgraster.xml"), lines);
+
+                System.out.println("OK");
+
+                String url = source_geoserver_url + REST_BASE_GEOSERVER + REST_GEOSERVER_WORKSPACES + "/" + datasettype + REST_GEOSERVER_COVERAGESTORES;
+
+                json.put("name", thisElement);
+                json.put("description", thisElement);
+                json.put("enabled", "true");
+                json.put("url", "file:coverages/" + thisElement + ".pgraster.xml");
+                json.put("type", "ImageMosaicJDBC");
+
+                jsonWorkspace.put("name", datasettype);
+                jsonWorkspace.put("link", datasettype.toLowerCase());
+                json.put("workspace", jsonWorkspace);
+                jsonRoot.put("coverageStore", json);
+
+
+                retData = sendPost(jsonRoot, url, false);
+
+
+                Thread.sleep(10000);
+
+                if (!retData.get("result").toString().matches("error")) {
+
+                    System.out.println("Store created");
+
+
+                } else {
+                    System.out.println("Store exists! it will be skipped.");
+                }
+                jsonWorkspace.clear();
+                json.clear();
+                jsonRoot.clear();
+
+            }
+            System.out.println("Starting with coverages...");
+
+            Thread.sleep(10000);
+            System.out.println("OK");
+
+
+            for(String thisElement : elements){
+                //TODO: mettere dentro un if ed eseguire solo se non ci sono errori
+
+
+
+
+                String url = source_geoserver_url + REST_BASE_GEOSERVER + REST_GEOSERVER_WORKSPACES + "/" + datasettype + REST_GEOSERVER_COVERAGESTORES + "/" + thisElement + REST_GEOSERVER_COVERAGES;
+
+                json.put("name", thisElement);
+                json.put("nativeName", thisElement);
+
+
+                jsonNamespace.put("name", datasettype);
+                jsonNamespace.put("href", source_geoserver_url + REST_BASE_GEOSERVER + REST_GEOSERVER_WORKSPACES + "/" + datasettype + ".json");
+
+                json.put("namespace", jsonNamespace);
+
+                json.put("title", thisElement);
+                json.put("description", "Generate from ImageMosaicJDBC");
+
+
+                jsonKeywordsArr.add(thisElement);
+                jsonKeywordsArr.add("WCS");
+                jsonKeywordsArr.add("ImageMosaicJDBC");
+
+                jsonKeywords.put("string", jsonKeywordsArr);
+
+                json.put("keywords", jsonKeywords);
+                json.put("srs", "EPSG:4326");
+                json.put("projectionPolicy", "REPROJECT_TO_DECLARED");
+                json.put("enabled", "true");
+
+
+                jsonStore.put("@class", "coverageStore");
+                jsonStore.put("href", source_geoserver_url + REST_BASE_GEOSERVER + REST_GEOSERVER_WORKSPACES + "/" + datasettype + REST_GEOSERVER_COVERAGESTORES + "/" + thisElement + ".json");
+                jsonStore.put("name", datasettype + ":" + thisElement);
+
+                json.put("store", jsonStore);
+                json.put("nativeFormat", "ImageMosaicJDBC");
+
+
+                jsonSupFormat.put("string", jsonSupFormatArr);
+
+                json.put("supportedFormats", jsonSupFormat);
+
+
+                jsonInterpolationMethods.put("string", jsonInterpolationMethodsArr);
+
+
+                json.put("interpolationMethods", jsonInterpolationMethods);
+
+                json.put("defaultInterpolationMethod", "nearest neighbor");
+
+
+                SRS.put("string", SRSArr);
+
+                json.put("requestSRS", SRS);
+                json.put("responseSRS", SRS);
+
+                json.put("nativeCoverageName", thisElement);
+
+
+                jsonRoot.put("coverage", json);
+                ////
+                retData = sendPost(jsonRoot, url, false);
+                System.out.print("Layer return: " + retData.toJSONString() + "...");
+                jsonRoot.clear();
+                jsonNamespace.clear();
+                jsonStore.clear();
+                jsonSupFormat.clear();
+                jsonInterpolationMethods.clear();
+                jsonWorkspace.clear();
+                SRS.clear();
+                json.clear();
+                jsonKeywordsArr.clear();
+                jsonKeywords.clear();
+                jsonKeywordsArr.clear();
+
+
+
+                System.out.println("waiting");
+                Thread.sleep(10000);
+
+
+
+            }
+        }catch(Exception e){
+            System.out.println(e.getMessage());
+            if (!closed){
+                try {
+                    tdb.closeConnection();
+                }catch(Exception ee){
+                    System.out.println(ee.getMessage());
+                }
+            }
+        }finally {
+        	if (!closed){
+                try {
+                    tdb.closeConnection();
+                }catch(Exception ee){
+                    System.out.println(ee.getMessage());
+                }
+            }
+        }
+    }
+
+    private void prepareGeoserverCreateCoverage() { ;
+        TDBManager tdb=null;
+        String sqlString = "";
+        JSONArray SRSArr = new JSONArray();
+        JSONObject SRS = new JSONObject();
+        JSONObject jsonRoot = new JSONObject();
+        JSONObject jsonWorkspace = new JSONObject();
+        JSONObject json = new JSONObject();
+        JSONObject jsonNamespace = new JSONObject();
+        JSONArray jsonKeywordsArr = new JSONArray();
+        JSONObject jsonKeywords = new JSONObject();
+        JSONObject jsonStore  = new JSONObject();
+        JSONArray jsonSupFormatArr = new JSONArray();
+        JSONObject jsonSupFormat = new JSONObject();
+        JSONObject jsonInterpolationMethods = new JSONObject();
+        JSONArray jsonInterpolationMethodsArr = new JSONArray();
+        JSONObject retData;
+        List<String> elements = new ArrayList<String>();
+        boolean closed = false;
+        SRSArr.add("EPSG:4326");
+
+        jsonSupFormatArr.add("GEOTIFF");
+        jsonSupFormatArr.add("GIF");
+        jsonSupFormatArr.add("PNG");
+        jsonSupFormatArr.add("JPEG");
+        jsonSupFormatArr.add("TIFF");
+        jsonSupFormatArr.add("ImageMosaicJDBC");
+        jsonSupFormatArr.add("ArcGrid");
+        jsonSupFormatArr.add("Gtopo30");
+        jsonSupFormatArr.add("ImageMosaic");
+        jsonSupFormatArr.add("GeoPackage (mosaic)");
+
+        jsonInterpolationMethodsArr.add("nearest neighbor");
+        jsonInterpolationMethodsArr.add("bilinear");
+        jsonInterpolationMethodsArr.add("bicubic");
+
+        System.out.print("createPackage: connecting...");
+
+        try {
+            if (dbcontext.matches("")) {
+                tdb = new TDBManager("org.postgresql.Driver", this.dburl, this.dbuser, this.dbpass);
+            } else {
+                tdb = new TDBManager(dbcontext);
+            }
+
+
+            tdb.openConnection();
+
+
+            System.out.println("Prepare Views procedure complete!");
+
+            if(this.geoserver_lyr_start.matches("")) {
+                sqlString = "select name, doi from " +
+                        "(select name,substring((trim(both '_out' from name)) from 11)::integer as doi from postgis.MOSAIC " +
+                        "where name like '"+this.dataset.toLowerCase()+"%' " +
+                        "order by doi) as fool ";
+            }else{
+                String whereStr = this.geoserver_lyr_start.substring(0,(this.dataset.length()+6));
+                whereStr = whereStr.replace("_out","");
+                sqlString = "select name, doi from " +
+                        "(select name,substring((trim(both '_out' from name)) from "+(this.dataset.length()+7)+")::integer as doi from postgis.MOSAIC " +
+                        "where name like '"+this.geoserver_lyr_start.substring(0,(this.dataset.length()+7))+"%' " +
+                        "order by doi) as fool " +
+                        "where doi > "+whereStr;
+
+            }
+
+
+
+            System.out.println(sqlString);
+
+            tdb.setPreparedStatementRef(sqlString);
+
+            tdb.runPreparedQuery();
+
+            System.out.print("collecting elements...");
+            while (tdb.next()) {
+                elements.add(tdb.getString(1));
+            }
+            System.out.println("done");
+
+
+
+            System.out.println("closing connection");
+            tdb.closeConnection();
+            System.out.println("done");
+            closed=true;
+
+            System.out.println("Starting with coverages...");
+
+
+
+
+            for(String thisElement : elements){
+                //TODO: mettere dentro un if ed eseguire solo se non ci sono errori
+
+                String url = source_geoserver_url + REST_BASE_GEOSERVER + REST_GEOSERVER_WORKSPACES + "/" + datasettype + REST_GEOSERVER_COVERAGESTORES + "/" + thisElement + REST_GEOSERVER_COVERAGES;
+
+                json.put("name", thisElement);
+                json.put("nativeName", thisElement);
+
+
+                jsonNamespace.put("name", datasettype);
+                jsonNamespace.put("href", source_geoserver_url + REST_BASE_GEOSERVER + REST_GEOSERVER_WORKSPACES + "/" + datasettype + ".json");
+
+                json.put("namespace", jsonNamespace);
+
+                json.put("title", thisElement);
+                json.put("description", "Generate from ImageMosaicJDBC");
+
+
+                jsonKeywordsArr.add(thisElement);
+                jsonKeywordsArr.add("WCS");
+                jsonKeywordsArr.add("ImageMosaicJDBC");
+
+                jsonKeywords.put("string", jsonKeywordsArr);
+
+                json.put("keywords", jsonKeywords);
+                json.put("srs", "EPSG:4326");
+                json.put("projectionPolicy", "REPROJECT_TO_DECLARED");
+                json.put("enabled", "true");
+
+
+                jsonStore.put("@class", "coverageStore");
+                jsonStore.put("href", source_geoserver_url + REST_BASE_GEOSERVER + REST_GEOSERVER_WORKSPACES + "/" + datasettype + REST_GEOSERVER_COVERAGESTORES + "/" + thisElement + ".json");
+                jsonStore.put("name", datasettype + ":" + thisElement);
+
+                json.put("store", jsonStore);
+                json.put("nativeFormat", "ImageMosaicJDBC");
+
+
+                jsonSupFormat.put("string", jsonSupFormatArr);
+
+                json.put("supportedFormats", jsonSupFormat);
+
+
+                jsonInterpolationMethods.put("string", jsonInterpolationMethodsArr);
+
+
+                json.put("interpolationMethods", jsonInterpolationMethods);
+
+                json.put("defaultInterpolationMethod", "nearest neighbor");
+
+
+                SRS.put("string", SRSArr);
+
+                json.put("requestSRS", SRS);
+                json.put("responseSRS", SRS);
+
+                json.put("nativeCoverageName", thisElement);
+
+
+                jsonRoot.put("coverage", json);
+                ////
+                retData = sendPost(jsonRoot, url, false);
+                System.out.print("Layer return: " + retData.toJSONString() + "...");
+                jsonRoot.clear();
+                jsonNamespace.clear();
+                jsonStore.clear();
+                jsonSupFormat.clear();
+                jsonInterpolationMethods.clear();
+                jsonWorkspace.clear();
+                SRS.clear();
+                json.clear();
+                jsonKeywordsArr.clear();
+                jsonKeywords.clear();
+                jsonKeywordsArr.clear();
+
+
+
+                System.out.println("waiting");
+                Thread.sleep(8000);
+
+
+
+            }
+        }catch(Exception e){
+            System.out.println(e.getMessage());
+            if (!closed){
+                try {
+                    System.out.println("sono qui cazzo");
+                    tdb.closeConnection();
+                }catch(Exception ee){
+                    System.out.println(ee.getMessage());
+                }
+            }
+        }
+    }
+
+
+
+    private void prepareGeoserverCreateStore() {
+        TDBManager tdb=null;
+        String sqlString = "select postgis.organize_geoserver_views(?)";
+        JSONArray SRSArr = new JSONArray();
+        JSONObject SRS = new JSONObject();
+        JSONObject jsonRoot = new JSONObject();
+        JSONObject jsonWorkspace = new JSONObject();
+        JSONObject json = new JSONObject();
+        JSONObject jsonNamespace = new JSONObject();
+        JSONArray jsonKeywordsArr = new JSONArray();
+        JSONObject jsonKeywords = new JSONObject();
+        JSONObject jsonStore  = new JSONObject();
+        JSONArray jsonSupFormatArr = new JSONArray();
+        JSONObject jsonSupFormat = new JSONObject();
+        JSONObject jsonInterpolationMethods = new JSONObject();
+        JSONArray jsonInterpolationMethodsArr = new JSONArray();
+        JSONObject retData;
+        List<String> elements = new ArrayList<String>();
+        boolean closed = false;
+        SRSArr.add("EPSG:4326");
+
+        jsonSupFormatArr.add("GEOTIFF");
+        jsonSupFormatArr.add("GIF");
+        jsonSupFormatArr.add("PNG");
+        jsonSupFormatArr.add("JPEG");
+        jsonSupFormatArr.add("TIFF");
+        jsonSupFormatArr.add("ImageMosaicJDBC");
+        jsonSupFormatArr.add("ArcGrid");
+        jsonSupFormatArr.add("Gtopo30");
+        jsonSupFormatArr.add("ImageMosaic");
+        jsonSupFormatArr.add("GeoPackage (mosaic)");
+
+        jsonInterpolationMethodsArr.add("nearest neighbor");
+        jsonInterpolationMethodsArr.add("bilinear");
+        jsonInterpolationMethodsArr.add("bicubic");
+
+        System.out.print("createPackage: connecting...");
+
+        try {
+            if (dbcontext.matches("")) {
+                tdb = new TDBManager("org.postgresql.Driver", this.dburl, this.dbuser, this.dbpass);
+            } else {
+                tdb = new TDBManager(dbcontext);
+            }
+
+
+            tdb.openConnection();
+
+            tdb.setPreparedStatementRef(sqlString);
+            tdb.setParameter(DBManager.ParameterType.STRING, this.dataset.toLowerCase(), 1);
+
+            tdb.runPreparedQuery();
+
+
+            //TODO: implementing PL/pgSQL exceptions management
+
+            //Preparing element list
+            if (tdb.next()) {
+                System.out.println("Prepare Views procedure complete!");
+
+                System.out.print("creating mapping xml files...");
+
+                if(this.geoserver_lyr_start.matches("")) {
+                    sqlString = "select name, doi from " +
+                            "(select name,substring((trim(both '_out' from name)) from 11)::integer as doi from postgis.MOSAIC " +
+                            "where name like '"+this.dataset.toLowerCase()+"%' " +
+                            "order by doi) as fool ";
+                }else{
+                    String whereStr = this.geoserver_lyr_start.substring(0,(this.dataset.length()+6));
+                    whereStr = whereStr.replace("_out","");
+                    sqlString = "select name, doi from " +
+                            "(select name,substring((trim(both '_out' from name)) from "+(this.dataset.length()+7)+")::integer as doi from postgis.MOSAIC " +
+                            "where name like '"+this.geoserver_lyr_start.substring(0,(this.dataset.length()+7))+"%' " +
+                            "order by doi) as fool " +
+                            "where doi > "+whereStr;
+
+                }
+
+
+                tdb.setPreparedStatementRef(sqlString);
+
+
+                tdb.runPreparedQuery();
+                System.out.print("collecting elements...");
+                while (tdb.next()) {
+                    elements.add(tdb.getString(1));
+                }
+
+                System.out.println("done");
+            }
+
+
+            System.out.println("closing connection");
+            tdb.closeConnection();
+            System.out.println("done");
+            closed=true;
+            for (String thisElement : elements) {
+                System.out.print(thisElement + ".pgraster.xml...");
+
+                List<String> lines = new ArrayList<String>();
+                lines.add("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>");
+                lines.add("<!DOCTYPE ImageMosaicJDBCConfig [");
+                lines.add("<!ENTITY mapping PUBLIC \"mapping\"  \"mapping.pgraster.xml.inc\">");
+                lines.add("<!ENTITY connect PUBLIC \"connect\"  \"connect.pgraster.xml.inc\">");
+                lines.add("]>");
+
+                lines.add("<config version=\"1.0\">");
+                lines.add("<coverageName name=\"" + thisElement + "\"/>");
+                lines.add("<coordsys name=\"EPSG:4326\"/>");
+
+                lines.add("<!-- interpolation 1 = nearest neighbour, 2 = bipolar, 3 = bicubic -->");
+                lines.add("<scaleop  interpolation=\"1\"/>");
+                lines.add("<axisOrder ignore=\"false\"/>");
+                lines.add("&mapping;");
+                lines.add("&connect;");
+                lines.add("</config>");
+
+
+                Files.write(Paths.get(this.geoserver_path + "/" + thisElement + ".pgraster.xml"), lines);
+
+                System.out.println("OK");
+
+                String url = source_geoserver_url + REST_BASE_GEOSERVER + REST_GEOSERVER_WORKSPACES + "/" + datasettype + REST_GEOSERVER_COVERAGESTORES;
+
+                json.put("name", thisElement);
+                json.put("description", thisElement);
+                json.put("enabled", "true");
+                json.put("url", "file:coverages/" + thisElement + ".pgraster.xml");
+                json.put("type", "ImageMosaicJDBC");
+
+                jsonWorkspace.put("name", datasettype);
+                jsonWorkspace.put("link", datasettype.toLowerCase());
+                json.put("workspace", jsonWorkspace);
+                jsonRoot.put("coverageStore", json);
+
+
+                retData = sendPost(jsonRoot, url, false);
+
+
+                Thread.sleep(8000);
+
+                if (!retData.get("result").toString().matches("error")) {
+
+                    System.out.println("Store created");
+
+
+                } else {
+                    System.out.println("Store exists! it will be skipped.");
+                }
+                jsonWorkspace.clear();
+                json.clear();
+                jsonRoot.clear();
+
+            }
+            System.out.println("Starting with coverages...");
+
+            Thread.sleep(8000);
+            System.out.println("Done");
+
+
+
+        }catch(Exception e){
+            System.out.println(e.getMessage());
+            if (!closed){
+                try {
+                    tdb.closeConnection();
+                }catch(Exception ee){
+                    System.out.println(ee.getMessage());
+                }
+            }
+        }
     }
 
     private void extractExtras(int id_acquisizione){
@@ -748,12 +1538,12 @@ public class CkanFiller {
 
 
             }
-
+         
 
 
             sqlString="SELECT (foo.md).upperleftx,(foo.md).upperlefty,(foo.md).width,(foo.md).height,(foo.md).srid FROM " +
                     " (SELECT ST_MetaData(ST_Union(rast)) as md from postgis."+tbl_name+" where id_acquisizione="+id_acquisizione+") as foo" ;
-            tdb.openConnection();
+        //   tdb.openConnection();
 
             tdb.setPreparedStatementRef(sqlString);
             System.out.println("SQL: "+sqlString);
@@ -796,7 +1586,7 @@ public class CkanFiller {
             }
 
             sqlString="SELECT ST_BandPixelType(ST_Union(rast)) from postgis."+tbl_name+" where id_acquisizione="+id_acquisizione ;
-            tdb.openConnection();
+     //       tdb.openConnection();
 
             tdb.setPreparedStatementRef(sqlString);
             System.out.println("SQL: "+sqlString);
@@ -830,26 +1620,281 @@ public class CkanFiller {
         }
     }
 
-    public JSONObject sendPost(JSONObject json2send,String url) throws Exception {
+
+    public JSONObject sendPost(JSONObject json2send,String url, boolean jsonResult) {
+
+
+
+        try{
+            final HttpParams httpParams = new BasicHttpParams();
+
+            HttpConnectionParams.setConnectionTimeout(httpParams, 120000);
+            HttpConnectionParams.setSoTimeout(httpParams,120000);
+            HttpClient httpClient = new DefaultHttpClient(httpParams);
+
+
+            System.out.println("URL: "+url);
+
+            //Prepare HttpPost connection
+            HttpPost request = new HttpPost(url);
+
+            System.out.println("Entity to send: "+json2send.toString());
+
+            StringEntity params =new StringEntity(json2send.toString(), "UTF-8");   //passing json structure
+
+            // System.out.println("Encoded string: "+params.toString());
+            request.setHeader("Authorization", "Basic " +  Base64.getEncoder().encodeToString((geoserver_cred).getBytes()));
+            request.addHeader("Accept", "application/json");
+            request.addHeader("Content-Type", "application/json");
+            request.setEntity(params);
+
+            System.out.println("Sending data");
+
+
+            HttpResponse response = httpClient.execute(request);
+
+            //check response
+            if(response.getStatusLine().getStatusCode() == HttpStatus.SC_CONFLICT){
+
+                System.out.println("Error code: "+response.getStatusLine().getStatusCode());
+
+
+            }else if(response.getStatusLine().getStatusCode() == HttpStatus.SC_CREATED ||
+                    response.getStatusLine().getStatusCode() == HttpStatus.SC_CONTINUE){
+
+                System.out.println("OK it was sent");
+                //retrieve response data
+                HttpEntity retData = response.getEntity();
+
+
+                InputStream in = retData.getContent();
+
+
+                //convert into JSON structure
+                BufferedReader bReader = new BufferedReader(new InputStreamReader(in));
+                StringBuilder sBuilder = new StringBuilder();
+                String line = null;
+
+                //if func manages no json result, it will convert into json structure
+                if(!jsonResult)
+                    sBuilder.append("{ \"result\": \"\n");
+
+
+                while ((line = bReader.readLine()) != null) {
+                    sBuilder.append(line + "\n");
+                }
+                if(!jsonResult)
+                    sBuilder.append("\"}\n");
+
+                System.out.println("RetString: "+sBuilder.toString());
+                JSONParser parser = new JSONParser();
+                JSONObject out = (JSONObject) parser.parse(sBuilder.toString());
+
+
+
+
+
+                return out;
+
+            }else if(response.getStatusLine().getStatusCode() == HttpStatus.SC_UNAUTHORIZED){
+                System.out.println("Error code: "+response.getStatusLine().getStatusCode());
+            }else {
+                System.out.println("Error code: "+response.getStatusLine().getStatusCode());
+
+                StringBuilder sBuilder = new StringBuilder();
+                String line = null;
+
+                sBuilder.append("{\"result\":\"error\"}");
+
+
+                JSONParser parser = new JSONParser();
+                JSONObject out = (JSONObject) parser.parse(sBuilder.toString());
+
+                return out;
+            }
+
+
+        }catch (SocketTimeoutException e){
+            StringBuilder sBuilder = new StringBuilder();
+            String line = null;
+
+            sBuilder.append("{\"result\":\"timeout-complete\"}");
+
+
+            JSONParser parser = new JSONParser();
+            try{
+                JSONObject out = (JSONObject) parser.parse(sBuilder.toString());
+                return out;
+            }catch(ParseException ee){
+                System.out.println("Error code: "+ee.getMessage());
+                return null;
+            }
+
+        }catch (IOException e){
+            System.out.println("Error code: "+e.getMessage());
+
+        }catch (ParseException e){
+            System.out.println("Error code: "+e.getMessage());
+        }catch (Exception e){
+            System.out.println("Error code: "+e.getMessage());
+        }
+
+
+        return null;
+
+    }
+
+
+    public JSONObject sendPost(JSONObject json2send,String url) {
+
+
+
+        try{
+            final HttpParams httpParams = new BasicHttpParams();
+
+        //    HttpConnectionParams.setConnectionTimeout(httpParams, 3000);
+        //    HttpConnectionParams.setSoTimeout(httpParams,3000);
+            HttpClient httpClient = new DefaultHttpClient();
+
+
+            System.out.println("URL: "+url);
+
+            //Prepare HttpPost connection
+            HttpPost request = new HttpPost(url);
+
+            System.out.println("Entity to send: "+json2send.toString());
+
+            StringEntity params =new StringEntity(json2send.toString(), "UTF-8");   //passing json structure
+
+            // System.out.println("Encoded string: "+params.toString());
+            request.addHeader("content-type", "application/x-www-form-urlencoded");
+            request.addHeader("Authorization", auth_id);   //passing authorization id
+
+            request.setEntity(params);
+
+            System.out.println("Sending data");
+
+
+            HttpResponse response = httpClient.execute(request);
+
+            //check response
+            if(response.getStatusLine().getStatusCode() == HttpStatus.SC_CONFLICT){
+
+                System.out.println("Conflict resource exists: "+response.getStatusLine().getStatusCode());
+                StringBuilder sBuilder = new StringBuilder();
+                String line = null;
+
+                sBuilder.append("{\"result\":\"conflict\"}");
+
+
+                JSONParser parser = new JSONParser();
+                JSONObject out = (JSONObject) parser.parse(sBuilder.toString());
+
+                return out;
+
+            }else if(response.getStatusLine().getStatusCode() == HttpStatus.SC_CREATED ||
+                    response.getStatusLine().getStatusCode() == HttpStatus.SC_CONTINUE ||
+                    response.getStatusLine().getStatusCode() == HttpStatus.SC_OK){
+
+                System.out.println("OK it was sent");
+                //retrieve response data
+                HttpEntity retData = response.getEntity();
+
+
+                InputStream in = retData.getContent();
+
+
+                //convert into JSON structure
+                BufferedReader bReader = new BufferedReader(new InputStreamReader(in));
+                StringBuilder sBuilder = new StringBuilder();
+                String line = null;
+
+                //if func manages no json result, it will convert into json structure
+
+                while ((line = bReader.readLine()) != null) {
+                    sBuilder.append(line + "\n");
+                }
+
+                System.out.println("RetString: "+sBuilder.toString());
+                JSONParser parser = new JSONParser();
+                JSONObject out = (JSONObject) parser.parse(sBuilder.toString());
+
+
+
+
+
+                return out;
+
+            }else if(response.getStatusLine().getStatusCode() == HttpStatus.SC_UNAUTHORIZED){
+                System.out.println("Unauthorized: "+response.getStatusLine().getStatusCode());
+            }else {
+                System.out.println("Error code: "+response.getStatusLine().getStatusCode());
+
+                StringBuilder sBuilder = new StringBuilder();
+                String line = null;
+
+                sBuilder.append("{\"result\":\"error\"}");
+
+
+                JSONParser parser = new JSONParser();
+                JSONObject out = (JSONObject) parser.parse(sBuilder.toString());
+
+                return out;
+            }
+
+
+        }catch (SocketTimeoutException e){
+            StringBuilder sBuilder = new StringBuilder();
+            String line = null;
+
+            sBuilder.append("{\"result\":\"timeout-complete\"}");
+
+
+            JSONParser parser = new JSONParser();
+            try{
+                JSONObject out = (JSONObject) parser.parse(sBuilder.toString());
+                return out;
+            }catch(ParseException ee){
+                System.out.println("Error code: "+ee.getMessage());
+                return null;
+            }
+
+        }catch (IOException e){
+            System.out.println("Error code: "+e.getMessage());
+
+        }catch (ParseException e){
+            System.out.println("Error code: "+e.getMessage());
+        }catch (Exception e){
+            System.out.println("Error code: "+e.getMessage());
+        }
+
+
+        return null;
+
+    }
+
+
+    public JSONObject sendGet(JSONObject json2send,String url, boolean jsonResult) throws Exception {
 
 
 
         HttpClient httpClient = new DefaultHttpClient();
 
-        System.out.println("Create HTTP-POST connection with id: "+auth_id);
+
         System.out.println("URL: "+url);
 
         //Prepare HttpPost connection
-        HttpPost request = new HttpPost(url);
+        HttpGet request = new HttpGet(url);
 
         System.out.println("Entity to send: "+json2send.toString());
 
         StringEntity params =new StringEntity(json2send.toString(), "UTF-8");   //passing json structure
 
-        System.out.println("Encoded string: "+params.toString());
-    //    request.addHeader("content-type", "application/x-www-form-urlencoded");
-        request.addHeader("Authorization", auth_id);   //passing authorization id
-        request.setEntity(params);
+        // System.out.println("Encoded string: "+params.toString());
+        request.setHeader("Authorization", "Basic " +  Base64.getEncoder().encodeToString((geoserver_cred).getBytes()));
+        request.addHeader("Accept", "application/json");
+        request.addHeader("Content-Type", "application/json");
+       // request.setEntity(params);
 
         System.out.println("Sending data");
 
@@ -861,55 +1906,90 @@ public class CkanFiller {
             System.out.println("Error code: "+response.getStatusLine().getStatusCode());
 
             throw new Exception((response.getStatusLine().getReasonPhrase()));
+        }else if(response.getStatusLine().getStatusCode() == HttpStatus.SC_CREATED ||
+                response.getStatusLine().getStatusCode() == HttpStatus.SC_CONTINUE){
+
+            System.out.println("OK it was sent");
+            //retrieve response data
+            HttpEntity retData = response.getEntity();
+
+
+            InputStream in = retData.getContent();
+
+
+            //convert into JSON structure
+            BufferedReader bReader = new BufferedReader(new InputStreamReader(in));
+            StringBuilder sBuilder = new StringBuilder();
+            String line = null;
+
+            //if func manages no json result, it will convert into json structure
+            if(!jsonResult)
+                sBuilder.append("{ \"result\": \"\n");
+
+
+            while ((line = bReader.readLine()) != null) {
+                sBuilder.append(line + "\n");
+            }
+            if(!jsonResult)
+                sBuilder.append("\"}\n");
+
+            System.out.println("RetString: "+sBuilder.toString());
+            JSONParser parser = new JSONParser();
+            JSONObject out = (JSONObject) parser.parse(sBuilder.toString());
+
+
+
+
+
+            return out;
+
+        }else if(response.getStatusLine().getStatusCode() == HttpStatus.SC_UNAUTHORIZED){
+            System.out.println("Error code: "+response.getStatusLine().getStatusCode());
+        }else {
+            System.out.println("Error code: "+response.getStatusLine().getStatusCode());
+
+            StringBuilder sBuilder = new StringBuilder();
+            String line = null;
+
+            sBuilder.append("{\"result\":\"error\"}");
+
+
+            JSONParser parser = new JSONParser();
+            JSONObject out = (JSONObject) parser.parse(sBuilder.toString());
+
+            return out;
         }
 
-        System.out.println("OK it was sent");
-        //retrieve response data
-        HttpEntity retData = response.getEntity();
 
-
-        InputStream in = retData.getContent();
-
-
-        //convert into JSON structure
-        BufferedReader bReader = new BufferedReader(new InputStreamReader(in));
-        StringBuilder sBuilder = new StringBuilder();
-        String line = null;
-
-        while ((line = bReader.readLine()) != null) {
-            sBuilder.append(line + "\n");
-        }
-
-
-        // System.out.println("RetString: "+sBuilder.toString());
-
-        JSONParser parser = new JSONParser();
-        JSONObject out = (JSONObject) parser.parse(sBuilder.toString());
-
-
-        return out;
+        return null;
 
     }
+    
+    private String createWSURL(int doy, String format, String outputformat){
 
-
-
+        //  if(datasettype.matches(TCI)) {
+        //      return (source_ws_base_url + REST_BASE_DOWNLOAD + REST_J_CALC_TCI + "?year=" + this.pkg_year + "&gg=" + doy+"&format="+format+"&streamed=0");
+        //  }
+  //droughtsdi.fi.ibimet.cnr.it/dgws/api/download/j_get_image/vhi/2018/129/png/
+          return source_ws_base_url + REST_BASE_DOWNLOAD + format + "/" + datasettype.toLowerCase() + "/" + this.pkg_year + "/" + doy+"/"+outputformat+"/";
+      }
 
     private String createWSURL(int doy, String format){
 
-        if(datasettype.matches(TCI)) {
-            return (source_ws_base_url + REST_BASE_DOWNLOAD + REST_J_CALC_TCI + "?year=" + this.pkg_year + "&gg=" + doy+"&format="+format+"&streamed=0");
-        }
-
-        return "";
+      //  if(datasettype.matches(TCI)) {
+      //      return (source_ws_base_url + REST_BASE_DOWNLOAD + REST_J_CALC_TCI + "?year=" + this.pkg_year + "&gg=" + doy+"&format="+format+"&streamed=0");
+      //  }
+//droughtsdi.fi.ibimet.cnr.it/dgws/api/download/j_get_image/vhi/2018/129/png/
+        return source_ws_base_url + REST_BASE_DOWNLOAD + format + "/" + datasettype.toLowerCase() + "/" + this.pkg_year + "/" + doy;
     }
 
-    private String createWSURL(int doy, String format, String layer_name){
+    private String createWSURL(String layer_name){
 
-        if(datasettype.matches(TCI)) {
-            return (source_geoserver_url + GEOSERVER_BASE_URL + "#" + TCI + ":" + layer_name);
-        }
+       // if(datasettype.matches(TCI)) {
+        return (source_geoserver_url + GEOSERVER_BASE_URL + "#" + datasettype.toUpperCase() + ":" + layer_name);
+       // }
 
-        return "";
+       // return "";
     }
 
 }
