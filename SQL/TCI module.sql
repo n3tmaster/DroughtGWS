@@ -1700,3 +1700,206 @@ ALTER FUNCTION postgis.calculate_tci(integer, integer)
 
 
 
+-- Calculate_TCI --
+-- VERSION 3.1 --
+-- This version doesn't work with united tiles but with grouped tiles in a for cycle.
+-- Each iteration calculates min, max and tci for tiles with the same boundaries
+-- it is faster then previous version
+-- this version doesn't delete previous TCI
+CREATE OR REPLACE FUNCTION postgis.calculate_tci(
+    doy_in integer,
+    year_in integer)
+    RETURNS boolean
+    LANGUAGE 'plpgsql'
+
+    COST 100
+    VOLATILE
+AS $BODY$DECLARE
+    --LST rasters
+
+    tci RASTER;
+    maxrast RASTER;
+    minrast RASTER;
+    lst_i RECORD;
+    icount INT;
+    nband INT;
+    imgtype_in INT;
+    id_acquisizione_in INT;
+
+BEGIN
+
+    RAISE NOTICE 'Calculating %, % for first iteration', doy_in, year_in;
+
+    select id_imgtype into imgtype_in
+    from   postgis.imgtypes
+    where  imgtype = 'LST';
+
+    IF EXISTS ( select id_acquisizione
+                from   postgis.acquisizioni inner join postgis.imgtypes using (id_imgtype)
+                where  imgtype = 'TCI'
+                  and    extract(doy from dtime) = doy_in
+                  and    extract(year from dtime) = year_in)  THEN
+
+        RAISE NOTICE 'Found';
+
+        select id_acquisizione into id_acquisizione_in
+        from   postgis.acquisizioni inner join postgis.imgtypes using (id_imgtype)
+        where  imgtype = 'TCI'
+          and    extract(doy from dtime) = doy_in
+          and    extract(year from dtime) = year_in;
+
+    --    RAISE NOTICE 'Deleting old tci';
+    --    DELETE FROM postgis.tci
+    --    WHERE  id_acquisizione = id_acquisizione_in;
+
+    ELSE
+
+        RAISE NOTICE 'not found, create';
+        INSERT INTO postgis.acquisizioni (dtime, id_imgtype)
+        VALUES (to_timestamp(''||year_in||' '||doy_in||'', 'YYYY DDD'),(select id_imgtype from postgis.imgtypes where imgtype='TCI'));
+
+        select id_acquisizione into id_acquisizione_in
+        from   postgis.acquisizioni inner join postgis.imgtypes using (id_imgtype)
+        where  imgtype = 'TCI'
+          and    extract(doy from dtime) = doy_in
+          and    extract(year from dtime) = year_in;
+
+    END IF;
+
+    RAISE NOTICE 'Get Last LST tiles';
+    icount := 0;
+    FOR lst_i IN select rast, ST_Envelope(rast) as ext
+                 from postgis.lst inner join postgis.acquisizioni
+                                             using (id_acquisizione)
+                 where extract(doy from dtime) = doy_in
+                   and   extract(year from dtime) = year_in
+
+
+        LOOP
+            icount := icount + 1;
+            RAISE NOTICE 'processing tile: %', icount;
+
+            RAISE NOTICE 'calculating min, max';
+            -- maxrast := st_addband(st_makeemptyraster(st_band(lst_i.rast,1)),'16BUI'::text);
+            -- minrast := st_addband(st_makeemptyraster(st_band(lst_i.rast,1)),'16BUI'::text);
+
+            select ST_Union(rast,'MIN'),ST_Union(rast,'MAX')
+            into   minrast, maxrast
+            from postgis.lst inner join postgis.acquisizioni
+                                        using (id_acquisizione)
+            where extract(doy from dtime) = doy_in
+              and   extract(year from dtime) < year_in
+              and   ST_Envelope(rast) = lst_i.ext;
+
+            -- RAISE NOTICE 'min: %, % max: %, %', ST_Width(minrast), ST_Height(minrast), ST_Width(maxrast), ST_Height(maxrast);
+
+            tci := ST_MapAlgebra(ARRAY[ROW(maxrast,1), ROW(minrast,1), ROW(lst_i.rast,1)]::rastbandarg[],
+                                 'calculate_tci_raster(double precision[], int[], text[])'::regprocedure,
+                                 '32BF', 'LAST', null, 0, 0, null);
+
+            RAISE NOTICE 'saving tci raster';
+
+
+            --	RAISE NOTICE 'ids %',id_acquisizione_in;
+            --  RAISE NOTICE 'tci: %, %', ST_Width(tci), ST_Height(tci);
+
+            INSERT INTO postgis.tci (id_acquisizione, rast)
+            VALUES
+            (id_acquisizione_in, ST_Tile(tci,240,240));
+
+            RAISE NOTICE 'saved';
+        END LOOP;
+
+
+    RAISE NOTICE 'done';
+    RETURN true;
+END;
+$BODY$;
+
+ALTER FUNCTION postgis.calculate_tci(integer, integer)
+    OWNER TO postgres;
+
+
+
+-- FUNCTION: postgis.import_lst_image(integer, integer)
+
+-- DROP FUNCTION postgis.import_lst_image(integer, integer);
+-- NEW version with resample
+CREATE OR REPLACE FUNCTION postgis.import_lst_image(
+    year_start integer,
+    gg_start integer)
+    RETURNS integer
+    LANGUAGE 'plpgsql'
+
+    COST 100
+    VOLATILE
+AS $BODY$
+DECLARE
+    mcount INT;
+    ycount INT;
+    id_ins INT;
+    sqlStr VARCHAR;
+    ref_rast RASTER;
+BEGIN
+
+    ycount := year_start;
+    mcount := gg_start;
+    id_ins := -1;
+
+    IF EXISTS (SELECT id_acquisizione
+               FROM postgis.acquisizioni
+               WHERE dtime = to_timestamp(''||ycount||'-'||mcount||' 00:00:00','YYYY-DDD HH24:MI:SS')
+                 AND   id_imgtype = 5) THEN
+
+        SELECT id_acquisizione INTO id_ins
+        FROM postgis.acquisizioni
+        WHERE dtime = to_timestamp(''||ycount||'-'||mcount||' 00:00:00','YYYY-DDD HH24:MI:SS')
+          AND   id_imgtype = 5;
+        RAISE NOTICE 'Esiste con questo id: %',id_ins;
+
+    ELSE
+        RAISE NOTICE 'Inserisco acquisizione : % - %: %', ycount, mcount,''||ycount||'-'||mcount||' 00:00:00';
+
+        insert into postgis.acquisizioni (dtime, id_imgtype) values (to_timestamp(''||ycount||'-'||mcount||' 00:00:00','YYYY-DDD HH24:MI:SS'),5);
+
+        RAISE NOTICE 'OK';
+
+        select max(id_acquisizione) into id_ins
+        from   postgis.acquisizioni;
+
+        RAISE NOTICE 'New id: %',id_ins;
+    END IF;
+
+    IF EXISTS (SELECT * FROM pg_tables WHERE tablename = 'lst_'||ycount||'_'||mcount) THEN
+        RAISE NOTICE 'Found';
+        RAISE NOTICE 'Get reference tile';
+        --TODO: in future version it will be necessary get reference tile from destination table if exists
+--	sqlStr := 'SELECT rast FROM lst_'||ycount||'_'||mcount||' LIMIT 1';
+
+        sqlStr := 'SELECT rast FROM postgis.lst LIMIT 1';
+        EXECUTE sqlStr INTO ref_rast;
+
+        RAISE NOTICE 'Resampling and saving...';
+        sqlStr := 'INSERT INTO postgis.lst (id_acquisizione, rast)
+			   SELECT '||id_ins||', ST_Tile(ST_Resample(rast,$1),240,240)
+			   FROM lst_'||ycount||'_'||mcount||'';
+
+        EXECUTE sqlStr USING ref_rast;
+
+        RAISE NOTICE 'done.';
+    ELSE
+        RAISE NOTICE 'Not Found, Skipping';
+
+    END IF;
+
+    RAISE NOTICE 'OK';
+
+    RETURN id_ins;
+END;
+$BODY$;
+
+ALTER FUNCTION postgis.import_lst_image(integer, integer)
+    OWNER TO postgres;
+
+
+

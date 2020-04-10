@@ -7,7 +7,6 @@
           <element id="module-output" name="DroughtGWS" />
         </element>
         <element id="directory" name="lib">
-          <element id="library" level="project" name="utils-1" />
           <element id="library" level="project" name="Maven: org.glassfish.hk2.external:javax.inject:2.5.0-b36" />
           <element id="library" level="project" name="Maven: javax.annotation:javax.annotation-api:1.2" />
           <element id="library" level="project" name="Maven: org.glassfish.hk2:osgi-resource-locator:1.0.1" />
@@ -35,6 +34,8 @@
           <element id="library" level="project" name="Maven: org.glassfish.jersey.bundles:jaxrs-ri:2.26-b03" />
           <element id="library" level="project" name="Maven: org.gdal:gdal:2.2.0" />
           <element id="library" level="project" name="javax.mail:mail:1.4.7" />
+          <element id="library" level="project" name="JAX-RS-2.1.1" />
+          <element id="library" level="project" name="utils-1" />
         </element>
       </element>
       <element id="javaee-facet-resources" facet="DroughtGWS/web/Web" />
