@@ -397,3 +397,126 @@ ALTER FUNCTION postgis.calculate_last_element(character varying)
     OWNER TO postgres;
 
 
+
+
+
+
+-- FUNCTION: postgis.calculate_last_element(character varying, integer)
+
+-- DROP FUNCTION postgis.calculate_last_element(character varying, integer);
+-- versione con tipo immagine e step
+CREATE OR REPLACE FUNCTION postgis.calculate_last_element(
+    imgtype_in character varying,
+    step integer)
+    RETURNS TABLE(odoy integer, oday integer, omonth integer, oyear integer)
+    LANGUAGE 'plpgsql'
+
+    COST 100
+    VOLATILE
+    ROWS 1000
+AS $BODY$
+DECLARE
+    dt timestamp;
+BEGIN
+    -- check the existence of one or more doy for given year
+    EXECUTE 'SELECT max(dtime) + interval '''||step||' days''
+			FROM   postgis.acquisizioni INNER JOIN postgis.imgtypes USING (id_imgtype)
+    		WHERE  imgtype = $1'
+        USING   imgtype_in
+        INTO   dt;
+
+    odoy := extract(doy from dt);
+    oday := extract(day from dt);
+    omonth := extract(month from dt);
+    oyear  := extract(year from dt);
+
+    RETURN NEXT;
+END;
+$BODY$;
+
+ALTER FUNCTION postgis.calculate_last_element(character varying, integer)
+    OWNER TO postgres;
+
+
+
+
+-- FUNCTION: postgis.calculate_last_element(character varying, integer)
+
+-- DROP FUNCTION postgis.calculate_last_element(character varying, integer);
+-- versione con tipo immagine e step e tile_referende
+-- versione con gestione dei tile reference per migliorare la ricerca dei nuovi dati
+CREATE OR REPLACE FUNCTION postgis.calculate_last_element(
+    imgtype_in character varying,
+    step integer,
+    tile_reference character varying)
+    RETURNS TABLE(odoy integer, oday integer, omonth integer, oyear integer)
+    LANGUAGE 'plpgsql'
+
+    COST 100
+    VOLATILE
+    ROWS 1000
+AS $BODY$
+DECLARE
+    dt timestamp;
+BEGIN
+    -- check the existence of one or more doy for given year
+    EXECUTE 'SELECT max(dtime) + interval '''||step||' days''
+			FROM   postgis.acquisizioni INNER JOIN postgis.imgtypes USING (id_imgtype) INNER JOIN postgis.tile_references USING (id_tile_reference)
+    		WHERE  imgtype = $1 and tile_ref = $2'
+        USING   imgtype_in, tile_reference
+        INTO   dt;
+
+    odoy := extract(doy from dt);
+    oday := extract(day from dt);
+    omonth := extract(month from dt);
+    oyear  := extract(year from dt);
+
+    RETURN NEXT;
+END;
+$BODY$;
+
+ALTER FUNCTION postgis.calculate_last_element(character varying, integer, character varying)
+    OWNER TO postgres;
+
+
+
+
+-- FUNCTION: postgis.calculate_last_element_2(character varying, integer)
+
+-- DROP FUNCTION postgis.calculate_last_element_2(character varying, integer);
+-- versione con gestione singoli tile di origine
+CREATE OR REPLACE FUNCTION postgis.calculate_last_element_2(
+    imgtype_in character varying,
+    step integer,
+    tile_reference_in character varying)
+    RETURNS TABLE(odoy integer, oday integer, omonth integer, oyear integer, odoy_next integer, oday_next integer, omonth_next integer, oyear_next integer)
+    LANGUAGE 'plpgsql'
+
+    COST 100
+    VOLATILE
+    ROWS 1000
+AS $BODY$
+BEGIN
+    -- check the existence of one or more doy for given year
+    RAISE NOTICE 'CHECK DOY EXISTENCE';
+
+    RAISE NOTICE 'There are at least one doy';
+    EXECUTE 'SELECT extract(doy from max(dtime)), extract(day from max(dtime)),
+           extract(month from max(dtime)), extract(year from max(dtime)),
+		   extract(doy from max(dtime + interval '''||step||''' day)), extract(day from max(dtime + interval '''||step||''' day)),
+           extract(month from max(dtime + interval '''||step||''' day)), extract(year from max(dtime + interval '''||step||''' day))
+    FROM   postgis.acquisizioni
+           INNER JOIN postgis.imgtypes USING (id_imgtype)
+           INNER JOIN postgis.tile_references USING (id_acquisizione)
+    WHERE  imgtype = $1 and tile_ref = $2'
+        INTO   odoy, oday, omonth, oyear, odoy_next, oday_next, omonth_next, oyear_next
+        USING  imgtype_in,tile_reference_in;
+
+
+    RETURN NEXT;
+END;
+$BODY$;
+
+ALTER FUNCTION postgis.calculate_last_element_2(character varying, integer, character varying)
+    OWNER TO postgres;
+

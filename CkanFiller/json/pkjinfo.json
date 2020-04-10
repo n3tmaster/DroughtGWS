@@ -1,9 +1,0 @@
-{
-  "notes": "TCI - Temperature Condition Index derived from MODIS Land Surface Temperature (LST)",
-  "owner_org": "cnribimet",
-  "author": "Ramona Magno",
-  "maintainer": "Leandro Rocchi",
-  "author_email": "r.magno@ibimet.cnr.it",
-  "maintainer_email": "l.rocchi@ibimet.cnr.it",
-  "license_id": "cc-by"
-}

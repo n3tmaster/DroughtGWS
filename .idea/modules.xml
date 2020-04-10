@@ -2,7 +2,6 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/CkanFiller/CkanFiller.iml" filepath="$PROJECT_DIR$/CkanFiller/CkanFiller.iml" />
       <module fileurl="file://$PROJECT_DIR$/DroughtGWS.iml" filepath="$PROJECT_DIR$/DroughtGWS.iml" />
     </modules>
   </component>

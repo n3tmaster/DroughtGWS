@@ -2053,12 +2053,41 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
 
 
             if(polygon.matches("") || polygon == null){
-                sqlString="select ST_asGDALRaster(ST_Union(rast),'GTiff') " +
+           //     sqlString="with base as ( " +
+         //               "select rast from postgis." +image_type+" inner join " +
+         //               "postgis.acquisizioni using (id_acquisizione) " +
+         //               "where extract('year' from dtime) = "+year+" "+
+         //               "and   extract('month' from dtime) = "+month+" "+
+         //               "and   extract('day' from dtime) = "+day+" " +
+         //               "LIMIT 1) "+
+         //               "select ST_asGDALRaster(ST_Union(ST_Resample(rast, (select rast from base))),'GTiff') " +
+         //               "from postgis."+image_type+" inner join postgis.acquisizioni using (id_acquisizione) "+
+         //               "where extract('year' from dtime) = "+year+" "+
+         //               "and   extract('month' from dtime) = "+month+" "+
+         //               "and   extract('day' from dtime) = "+day;
+
+                  sqlString="select ST_asGDALRaster(ST_Union(rast),'GTiff') " +
                         "from postgis."+image_type+" inner join postgis.acquisizioni using (id_acquisizione) "+
                         "where extract('year' from dtime) = "+year+" "+
                         "and   extract('month' from dtime) = "+month+" "+
                         "and   extract('day' from dtime) = "+day;
             }else{
+             /*   sqlString="with base as ( " +
+                        "select rast from postgis." +image_type+" inner join " +
+                        "postgis.acquisizioni using (id_acquisizione) " +
+                        "where extract('year' from dtime) = "+year+" "+
+                        "and   extract('month' from dtime) = "+month+" "+
+                        "and   extract('day' from dtime) = "+day+" " +
+                        "LIMIT 1) "+
+                        "select ST_asGDALRaster(ST_Clip(ST_Union(ST_Resample(rast, (select rast from base))),1,ST_Transform(ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+"),"+DBSRID+"),true),'GTiff') " +
+                        "from postgis."+image_type+" inner join postgis.acquisizioni using (id_acquisizione) "+
+                        "where extract('year' from dtime) = "+year+" "+
+                        "and   extract('month' from dtime) = "+month+" "+
+                        "and   extract('day' from dtime) = "+day;
+*/
+
+
+
                 sqlString="select ST_asGDALRaster(ST_Clip(ST_Union(rast),1,ST_Transform(ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+"),"+DBSRID+"),true),'GTiff') " +
                         "from postgis."+image_type+" as a inner join postgis.acquisizioni as b using (id_acquisizione) "+
                         "where extract('year' from b.dtime) = "+year+" "+
