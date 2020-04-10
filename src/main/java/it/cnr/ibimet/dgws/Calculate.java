@@ -127,6 +127,79 @@ public class Calculate  extends Application implements SWH4EConst{
 
 
     @GET
+    @Produces(MediaType.TEXT_PLAIN)
+    @Path("/tci/{year}/{doy}")
+    public Response calculateTCI(@PathParam("year") String year,
+                                     @PathParam("doy") String doy){
+
+        byte[] imgOut=null;
+        TDBManager tdb=null;
+        GregorianCalendar gc = new GregorianCalendar();
+        Vector<InputStream> inputStreams = new Vector<InputStream>();
+
+
+
+
+        try {
+
+            tdb = new TDBManager("jdbc/ssdb");
+            String sqlString=null;
+
+
+
+            System.out.print("Calculating TCI..." + doy + "-" + year);
+
+            sqlString = "select count(*) from postgis.calculate_tci(?, ?)";
+            tdb.setPreparedStatementRef(sqlString);
+            tdb.setParameter(DBManager.ParameterType.INT, doy, 1);
+            tdb.setParameter(DBManager.ParameterType.INT, year, 2);
+            tdb.runPreparedQuery();
+
+            if (tdb.next()) {
+                System.out.println("Success.");
+
+            } else {
+                System.out.println("Attempt calculate TCI.");
+
+                try{
+                    System.out.println("TCI - Closing connections");
+                    tdb.closeConnection();
+                }catch (Exception ee){
+                    System.out.println("Error "+ee.getMessage());
+                }
+                return  Response.status(Response.Status.NOT_FOUND).entity("LST for "+doy+"-"+year+" not found ").build();
+
+            }
+
+            System.out.println("TCI - Closing connections");
+
+            tdb.closeConnection();
+            System.out.println("Done.");
+
+
+
+        }catch(Exception e){
+            System.out.println("Error  : "+e.getMessage());
+
+            try{
+                tdb.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }
+
+
+        System.out.println("done");
+
+
+        return Response.status(Response.Status.OK).entity("TCI for "+doy+"-"+year+" calculated ").build();
+
+
+    }
+
+    @GET
     @Produces("image/tiff")
     @Path("/pre_rain_cum/{year}/{month}")
     public Response calculatePreRainSum(@PathParam("year") String year,

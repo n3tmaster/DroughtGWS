@@ -262,6 +262,399 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
 
 
+    @POST
+    @Path("/j_organize_lst/{year}/{doy}/{tile_ref}")
+    public Response saveLST( @PathParam("year") String year,
+                                        @PathParam("doy") String doy,
+                             @PathParam("tile_ref") String tile_ref){
+
+        TDBManager tdb=null;
+
+
+
+        try {
+            tdb = new TDBManager("jdbc/ssdb");
+            String sqlString=null;
+
+
+
+            //Save new image into related spatial table and put new timestamp in acquisition table
+
+            sqlString=" select * from postgis.import_lst_image("+year+","+doy+")";
+
+            System.out.println("SQL: "+sqlString);
+
+            tdb.setPreparedStatementRef(sqlString);
+
+            tdb.runPreparedQuery();
+
+            if (tdb.next()) {
+                if(tdb.getInteger(1) != -1){
+                    //new image saved. now deleting temporary table...
+                    System.out.println("new image saved ("+tdb.getInteger(1)+")");
+
+                    sqlString="insert into postgis.tile_references (id_acquisizione, tile_ref) " +
+                            "values " +
+                            "("+tdb.getInteger(1)+",'"+tile_ref+"')";
+
+                    System.out.print("insert tile ref...");
+                    tdb.setPreparedStatementRef(sqlString);
+                    tdb.performInsert();
+
+                    System.out.println("ok");
+                }
+
+
+                System.out.print("cleaning temp table...");
+                sqlString=" select from postgis.clean_temp_lst_tables("+year+","+year+","+doy+","+doy+")";
+
+                tdb.setPreparedStatementRef(sqlString);
+
+                tdb.runPreparedQuery();
+
+                if (tdb.next()){
+                    System.out.println("ok");
+                }else{
+
+
+                    return Response.status(500).entity("Error during import procedure!").build();
+
+                }
+            }else{
+                sqlString=" select from postgis.clean_temp_lst_tables("+year+","+year+","+doy+","+doy+")";
+
+                tdb.setPreparedStatementRef(sqlString);
+
+                tdb.runPreparedQuery();
+                return Response.status(500).entity("Error during import procedure!").build();
+
+            }
+
+
+        }catch(SQLException sqle){
+            System.out.println("Error  : "+sqle.getMessage());
+
+
+            try{
+
+                tdb.setPreparedStatementRef(" select from postgis.clean_temp_lst_tables("+year+","+year+","+doy+","+doy+")");
+
+                tdb.runPreparedQuery();
+                System.out.print("closing connection...");
+                tdb.closeConnection();
+                System.out.println("done");
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+                try{
+
+
+                    System.out.print("closing connection...");
+                    tdb.closeConnection();
+                    System.out.println("done");
+                }catch (Exception eee){
+                    System.out.println("Error "+ee.getMessage());
+                }
+            }
+
+            return Response.status(500).entity("Error during import procedure!").build();
+
+        }catch(Exception e){
+            System.out.println("Error  : "+e.getMessage());
+
+
+            try{
+
+
+                System.out.print("closing connection...");
+                tdb.closeConnection();
+                System.out.println("done");
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+            return Response.status(500).entity("Error during import procedure!").build();
+
+        }finally {
+            {
+                try{
+                    System.out.print("closing connection...");
+                    tdb.closeConnection();
+                    System.out.println("done");
+                }catch (Exception ee){
+                    System.out.println("Error "+ee.getMessage());
+                }
+
+            }
+        }
+
+
+        return Response.status(200).entity("Image saved!").build();
+
+    }
+
+
+    @POST
+    @Path("/j_organize_evi{year}/{doy}/{tile_ref}")
+    public Response saveEVI( @PathParam("year") String year,
+                              @PathParam("doy") String doy,
+                              @PathParam("tile_ref") String tile_ref){
+
+        TDBManager tdb=null;
+
+
+
+        try {
+            tdb = new TDBManager("jdbc/ssdb");
+            String sqlString=null;
+
+
+
+            //Save new image into related spatial table and put new timestamp in acquisition table
+
+            sqlString=" select * from postgis.import_evi_image("+year+","+doy+")";
+
+            System.out.println("SQL: "+sqlString);
+
+            tdb.setPreparedStatementRef(sqlString);
+
+            tdb.runPreparedQuery();
+
+            if (tdb.next()) {
+                if(tdb.getInteger(1) != -1){
+                    //new image saved. now deleting temporary table...
+                    System.out.println("new image saved ("+tdb.getInteger(1)+")");
+
+                    sqlString="insert into postgis.tile_references (id_acquisizione, tile_ref) " +
+                            "values " +
+                            "("+tdb.getInteger(1)+",'"+tile_ref+"')";
+
+                    System.out.print("insert tile ref...");
+                    tdb.setPreparedStatementRef(sqlString);
+                    tdb.performInsert();
+
+                    System.out.println("ok");
+                }
+
+
+                System.out.print("cleaning temp table...");
+                sqlString=" select from postgis.clean_temp_evi_tables("+year+","+year+","+doy+","+doy+")";
+
+                tdb.setPreparedStatementRef(sqlString);
+
+                tdb.runPreparedQuery();
+
+                if (tdb.next()){
+                    System.out.println("ok");
+                }else{
+
+
+                    return Response.status(500).entity("Error during import procedure!").build();
+
+                }
+            }else{
+                sqlString=" select from postgis.clean_temp_evi_tables("+year+","+year+","+doy+","+doy+")";
+
+                tdb.setPreparedStatementRef(sqlString);
+
+                tdb.runPreparedQuery();
+                return Response.status(500).entity("Error during import procedure!").build();
+
+            }
+
+
+        }catch(SQLException sqle){
+            System.out.println("Error  : "+sqle.getMessage());
+
+
+            try{
+
+                tdb.setPreparedStatementRef(" select from postgis.clean_temp_evi_tables("+year+","+year+","+doy+","+doy+")");
+
+                tdb.runPreparedQuery();
+                System.out.print("closing connection...");
+                tdb.closeConnection();
+                System.out.println("done");
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+                try{
+
+
+                    System.out.print("closing connection...");
+                    tdb.closeConnection();
+                    System.out.println("done");
+                }catch (Exception eee){
+                    System.out.println("Error "+ee.getMessage());
+                }
+            }
+
+            return Response.status(500).entity("Error during import procedure!").build();
+
+        }catch(Exception e){
+            System.out.println("Error  : "+e.getMessage());
+
+
+            try{
+
+
+                System.out.print("closing connection...");
+                tdb.closeConnection();
+                System.out.println("done");
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+            return Response.status(500).entity("Error during import procedure!").build();
+
+        }finally {
+            {
+                try{
+                    System.out.print("closing connection...");
+                    tdb.closeConnection();
+                    System.out.println("done");
+                }catch (Exception ee){
+                    System.out.println("Error "+ee.getMessage());
+                }
+
+            }
+        }
+
+
+        return Response.status(200).entity("Image saved!").build();
+
+    }
+
+
+
+    @POST
+    @Path("/j_organize_ndvi/{year}/{doy}/{tile_ref}")
+    public Response saveNDVI( @PathParam("year") String year,
+                             @PathParam("doy") String doy,
+                             @PathParam("tile_ref") String tile_ref){
+
+        TDBManager tdb=null;
+
+
+
+        try {
+            tdb = new TDBManager("jdbc/ssdb");
+            String sqlString=null;
+
+
+
+            //Save new image into related spatial table and put new timestamp in acquisition table
+
+            sqlString=" select * from postgis.import_ndvi_image("+year+","+doy+")";
+
+            System.out.println("SQL: "+sqlString);
+
+            tdb.setPreparedStatementRef(sqlString);
+
+            tdb.runPreparedQuery();
+
+            if (tdb.next()) {
+                if(tdb.getInteger(1) != -1){
+                    //new image saved. now deleting temporary table...
+                    System.out.println("new image saved ("+tdb.getInteger(1)+")");
+
+                    sqlString="insert into postgis.tile_references (id_acquisizione, tile_ref) " +
+                            "values " +
+                            "("+tdb.getInteger(1)+",'"+tile_ref+"')";
+
+                    System.out.print("insert tile ref...");
+                    tdb.setPreparedStatementRef(sqlString);
+                    tdb.performInsert();
+
+                    System.out.println("ok");
+                }
+
+
+                System.out.print("cleaning temp table...");
+                sqlString=" select from postgis.clean_temp_ndvi_tables("+year+","+year+","+doy+","+doy+")";
+
+                tdb.setPreparedStatementRef(sqlString);
+
+                tdb.runPreparedQuery();
+
+                if (tdb.next()){
+                    System.out.println("ok");
+                }else{
+
+
+                    return Response.status(500).entity("Error during import procedure!").build();
+
+                }
+            }else{
+                sqlString=" select from postgis.clean_temp_ndvi_tables("+year+","+year+","+doy+","+doy+")";
+
+                tdb.setPreparedStatementRef(sqlString);
+
+                tdb.runPreparedQuery();
+                return Response.status(500).entity("Error during import procedure!").build();
+
+            }
+
+
+        }catch(SQLException sqle){
+            System.out.println("Error  : "+sqle.getMessage());
+
+
+            try{
+
+                tdb.setPreparedStatementRef(" select from postgis.clean_temp_ndvi_tables("+year+","+year+","+doy+","+doy+")");
+
+                tdb.runPreparedQuery();
+                System.out.print("closing connection...");
+                tdb.closeConnection();
+                System.out.println("done");
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+                try{
+
+
+                    System.out.print("closing connection...");
+                    tdb.closeConnection();
+                    System.out.println("done");
+                }catch (Exception eee){
+                    System.out.println("Error "+ee.getMessage());
+                }
+            }
+
+            return Response.status(500).entity("Error during import procedure!").build();
+
+        }catch(Exception e){
+            System.out.println("Error  : "+e.getMessage());
+
+
+            try{
+
+
+                System.out.print("closing connection...");
+                tdb.closeConnection();
+                System.out.println("done");
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+            return Response.status(500).entity("Error during import procedure!").build();
+
+        }finally {
+            {
+                try{
+                    System.out.print("closing connection...");
+                    tdb.closeConnection();
+                    System.out.println("done");
+                }catch (Exception ee){
+                    System.out.println("Error "+ee.getMessage());
+                }
+
+            }
+        }
+
+
+        return Response.status(200).entity("Image saved!").build();
+
+    }
+
 
 
 
@@ -788,12 +1181,15 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
         System.out.println("Start");
         System.out.println("app_key: "+app_key);
+
+
         try {
+            tdb = new TDBManager("jdbc/ssdb");
             if(year_in.matches("") || year_in == null){
 
 
 
-                tdb = new TDBManager("jdbc/ssdb");
+
                 ///////
 
                 sqlString = "select * from postgis.calculate_last_element_2(?,?)";
@@ -850,7 +1246,8 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
             System.out.println(""+year+"-"+month+"-"+day+"  "+doy);
 
-
+            System.out.println(WS_MODIS_SEARCH4FILES+"start="+year+"-"+month+"-"+day+"&stop="+year+"-"+month+"-"+day+
+                    "&coordsOrTiles=tiles&north="+north+"&south="+south+"&east="+east+"&west="+west+"&product="+product+"&collection="+collection);
             httpMng.setUrl(WS_MODIS_SEARCH4FILES+"start="+year+"-"+month+"-"+day+"&stop="+year+"-"+month+"-"+day+
                     "&coordsOrTiles=tiles&north="+north+"&south="+south+"&east="+east+"&west="+west+"&product="+product+"&collection="+collection);
 
@@ -1591,6 +1988,556 @@ public class OrganizeRaster extends Application implements SWH4EConst {
             } catch (SQLException e) {
                 e.printStackTrace();
             }
+        }
+
+        return Response.status(200).entity("Image saved!").build();
+
+
+    }
+
+    /**
+     * Method for update LST images from MODIS
+     * versione per la gestione a singoli tiles
+     * @param product     (MOD11A2)
+     * @param collection  (6)
+     * @param tile_y   -  north tile
+     * @param tile_x   -  west tile
+     * @param year_in
+     * @param month_in
+     * @param day_in
+     * @param doy_in
+     * @return
+     */
+    @GET
+    @Path("/j_update_lst2/{product}/{collection}/{tile_y}/{tile_x}/{skip_tci}/{app_key}{year_in:(/year_in/.+?)?}{month_in:(/month_in/.+?)?}{day_in:(/day_in/.+?)?}{doy_in:(/doy_in/.+?)?}")
+    public Response updateLST2(@PathParam("product") String product,
+                              @PathParam("collection") String collection,
+                              @PathParam("tile_y") String tile_y,
+                              @PathParam("tile_x") String tile_x,
+                               @PathParam("skip_tci") String skip_tci,
+                              @PathParam("app_key") String app_key,
+                               @PathParam("year_in") String year_in,
+                              @PathParam("month_in") String month_in,
+                              @PathParam("day_in") String day_in,
+                              @PathParam("doy_in") String doy_in){
+
+
+        TDBManager tdb=null;
+        String fileList = "",sqlString="";
+        ProcessBuilder builder=null;
+        HttpURLManager httpMng=new HttpURLManager();
+        String year="";
+        String month="";
+        String day="";
+        String doy="";
+        Process process=null;
+        DocumentBuilder db = null;
+        InputSource is = null;
+        Document doc=null;
+        NodeList nList=null;
+        StreamGobbler streamGobbler;
+        int exitCode;
+        List<String> arguments=null;
+
+        System.out.println("Start");
+        System.out.println("app_key: "+app_key);
+        try {
+            tdb = new TDBManager("jdbc/ssdb");
+            if(year_in.matches("") || year_in == null){
+
+
+
+
+                ///////
+
+                sqlString = "select * from postgis.calculate_last_element_2(?,?,?)";
+                tdb.setPreparedStatementRef(sqlString);
+                tdb.setParameter(DBManager.ParameterType.STRING,"LST",1);
+                tdb.setParameter(DBManager.ParameterType.INT,""+8,2);
+                tdb.setParameter(DBManager.ParameterType.STRING,tile_y+"-"+tile_x,3);
+
+                tdb.runPreparedQuery();
+
+                if(tdb.next()){
+                    if(tdb.getInteger(7) == 1 && tdb.getInteger(5) < 8){
+
+
+
+                        doy="1";
+                        month="1";
+                        day = "1";
+                        year=""+(tdb.getInteger(8));
+                    }else{
+                        doy=""+(tdb.getInteger(5));
+                        day=""+tdb.getInteger(6);
+                        month=""+tdb.getInteger(7);
+
+                        year=""+tdb.getInteger(8) ;
+                    }
+
+
+                }
+
+            }else{
+                GregorianCalendar gregorianCalendar=new GregorianCalendar();
+
+                year= year_in.split("/")[2];
+
+                doy= doy_in.split("/")[2];
+
+                // System.out.println(""+year+"-"+month+"-"+day+"  "+doy);
+
+                gregorianCalendar.set(GregorianCalendar.YEAR,Integer.parseInt(year));
+                gregorianCalendar.set(GregorianCalendar.DAY_OF_YEAR,Integer.parseInt(doy));
+
+                month  = String.valueOf((gregorianCalendar.get(GregorianCalendar.MONTH) + 1));
+                day    = String.valueOf(gregorianCalendar.get(GregorianCalendar.DAY_OF_MONTH));
+
+                System.out.println("month: "+month+"  day: "+day);
+
+            }
+
+            if(Integer.parseInt(day)<10)
+                day="0"+day;
+
+            if(Integer.parseInt(month)<10)
+                month="0"+month;
+
+
+            System.out.println(""+year+"-"+month+"-"+day+"  "+doy);
+
+            System.out.println(WS_MODIS_SEARCH4FILES+"start="+year+"-"+month+"-"+day+"&stop="+year+"-"+month+"-"+day+
+                    "&coordsOrTiles=tiles&north="+tile_y+"&south="+tile_y+"&east="+tile_x+"&west="+tile_x+"&product="+product+"&collection="+collection);
+
+            httpMng.setUrl(WS_MODIS_SEARCH4FILES+"start="+year+"-"+month+"-"+day+"&stop="+year+"-"+month+"-"+day+
+                    "&coordsOrTiles=tiles&north="+tile_y+"&south="+tile_y+"&east="+tile_x+"&west="+tile_x+"&product="+product+"&collection="+collection);
+
+
+            db = DocumentBuilderFactory.newInstance().newDocumentBuilder();
+            is = new InputSource();
+            is.setCharacterStream(new StringReader(httpMng.sendGet()));
+
+            doc = db.parse(is);
+
+            doc.getDocumentElement().normalize();
+
+            System.out.println("Root element :" + doc.getDocumentElement().getNodeName());
+
+            nList = doc.getElementsByTagName("return");
+
+            if(nList.getLength()<1){
+                System.out.println("No result");
+            }else {
+                fileList =  nList.item(0).getTextContent();
+
+                for (int icount = 1; icount < nList.getLength(); icount++) {
+
+                    fileList = fileList + "," + nList.item(icount).getTextContent();
+                }
+                System.out.println("IDs List: "+fileList);
+
+
+                httpMng.setUrl(WS_MODIS_GETFILEURL+"fileIds="+fileList);
+                is.setCharacterStream(new StringReader(httpMng.sendGet()));
+
+                doc = db.parse(is);
+
+                doc.getDocumentElement().normalize();
+
+                System.out.println("Root element :" + doc.getDocumentElement().getNodeName());
+
+                nList = doc.getElementsByTagName("return");
+
+                if(nList.getLength()<1){
+                    System.out.println("No files found");
+                }else {
+
+
+                    for (int icount = 0; icount < nList.getLength(); icount++) {
+
+                        System.out.println("Elem : "+nList.item(icount).getTextContent());
+
+                        builder = new ProcessBuilder();
+                        builder.redirectErrorStream(true);  //Redirect error on stdout
+
+                        builder.command("wget","-O",TMP_DIR+"/prodlst"+icount+".hdf",nList.item(icount).getTextContent(),"--header", "Authorization: Bearer "+app_key);
+
+                        System.out.println("Starting shell procedure");
+                        process = builder.start();
+
+                        streamGobbler =
+                                new StreamGobbler(process.getInputStream(), System.out::println);
+                        Executors.newSingleThreadExecutor().submit(streamGobbler);
+
+                        exitCode = process.waitFor();
+                        assert exitCode == 0;
+
+
+                        //Extracting EVI
+                        System.out.println("extracting LST...");
+
+                        builder.redirectErrorStream(true);  //Redirect error on stdout
+
+                        builder.command("/usr/bin/import_lst.sh",year,doy,""+icount);
+
+                        System.out.println("Starting shell procedure");
+
+                        process = builder.start();
+
+
+                        streamGobbler =
+                                new StreamGobbler(process.getInputStream(), System.out::println);
+                        Executors.newSingleThreadExecutor().submit(streamGobbler);
+
+                        exitCode = process.waitFor();
+                        assert exitCode == 0;
+                    }
+
+                    System.out.println("saving LST...");
+
+                    builder.redirectErrorStream(true);  //Redirect error on stdout
+
+                    builder.command("/usr/bin/save_lst_pgsql.sh",year,doy,tile_y+"-"+tile_x);
+
+                    System.out.println("Starting shell procedure");
+
+                    process = builder.start();
+
+
+                    streamGobbler =
+                            new StreamGobbler(process.getInputStream(), System.out::println);
+                    Executors.newSingleThreadExecutor().submit(streamGobbler);
+
+                    exitCode = process.waitFor();
+                    assert exitCode == 0;
+
+                    if(skip_tci.matches("1")) {
+                        System.out.print("Calculating TCI..." + doy + "-" + year);
+
+                        sqlString = "select count(*) from postgis.calculate_tci(?, ?)";
+                        tdb.setPreparedStatementRef(sqlString);
+                        tdb.setParameter(DBManager.ParameterType.INT, doy, 1);
+                        tdb.setParameter(DBManager.ParameterType.INT, year, 2);
+                        tdb.runPreparedQuery();
+
+                        if (tdb.next()) {
+                            System.out.println("Success.");
+
+
+                        /*    System.out.print("Updating tile reference...");
+                            sqlString = "insert into postgis.tile_references(id_acquisizione, tile_ref) " +
+                                    "select id_acquisizione, ? " +
+                                    "from postgis.acquisizioni inner join postgis.imgtypes using (id_imgtype) " +
+                                    "where extract(doy from dtime)=? " +
+                                    "and   extract(year from dtime)=? " +
+                                    "and   imgtype = ?";
+                            tdb.setPreparedStatementRef(sqlString);
+                            tdb.setParameter(DBManager.ParameterType.STRING, tile_y + "-" + tile_x, 1);
+                            tdb.setParameter(DBManager.ParameterType.INT, doy, 2);
+                            tdb.setParameter(DBManager.ParameterType.INT, year, 3);
+                            tdb.setParameter(DBManager.ParameterType.STRING, "TCI", 4);
+                            tdb.performInsert();
+*/
+                        } else {
+                            System.out.println("Attempt calculate TCI.");
+                        }
+
+                        System.out.println("Done.");
+                    }
+                }
+            }
+
+
+        }catch(Exception e){
+            System.out.println("Error  : "+e.getMessage());
+            try {
+                tdb.closeConnection();
+            } catch (SQLException ee) {
+                ee.printStackTrace();
+            }
+
+
+            return Response.status(500).entity("Error during import procedure!").build();
+
+        }finally {
+            try {
+                tdb.closeConnection();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+
+        return Response.status(200).entity("Image saved!").build();
+
+
+    }
+
+
+
+
+
+
+    /**
+     * Method for update EVI and NDVI images from MODIS
+     *
+     * @param product       (MOD13Q1)
+     * @param collection    (6)
+     * @param tile_y
+     * @param tile_x
+     * @param skip_vci
+     * @param year_in
+     * @param month_in
+     * @param day_in
+     * @param doy_in
+     * @return
+     */
+    @GET
+    @Path("/j_update_evi2/{product}/{collection}/{tile_y}/{tile_x}/{skip_vci}/{app_key}{year_in:(/year_in/.+?)?}{month_in:(/month_in/.+?)?}{day_in:(/day_in/.+?)?}{doy_in:(/doy_in/.+?)?}")
+    public Response updateEviNdvi2(@PathParam("product") String product,
+                                  @PathParam("collection") String collection,
+                                   @PathParam("tile_y") String tile_y,
+                                   @PathParam("tile_x") String tile_x,
+                                   @PathParam("skip_vci") String skip_vci,
+                                  @PathParam("app_key") String app_key,
+                                  @PathParam("year_in") String year_in,
+                                  @PathParam("month_in") String month_in,
+                                  @PathParam("day_in") String day_in,
+                                  @PathParam("doy_in") String doy_in){
+
+
+        TDBManager tdb=null;
+        String fileList = "",sqlString="";
+        ProcessBuilder builder=null;
+        HttpURLManager httpMng=new HttpURLManager();
+        String year="";
+        String month="";
+        String day="";
+        String doy="";
+        Process process=null;
+        DocumentBuilder db = null;
+        InputSource is = null;
+        Document doc=null;
+        NodeList nList=null;
+        StreamGobbler streamGobbler;
+        int exitCode;
+        List<String> arguments=null;
+
+        System.out.println("Start");
+        System.out.println("app_key: "+app_key);
+        try {
+            if(year_in.matches("") || year_in == null){
+                tdb = new TDBManager("jdbc/ssdb");
+
+
+                sqlString = "select * from postgis.calculate_last_element_2(?,?,?)";
+                tdb.setPreparedStatementRef(sqlString);
+                tdb.setParameter(DBManager.ParameterType.STRING,"NDVI",1);
+                tdb.setParameter(DBManager.ParameterType.INT,""+16,2);
+                tdb.setParameter(DBManager.ParameterType.STRING,tile_y+"-"+tile_x,3);
+
+
+                tdb.runPreparedQuery();
+
+                if(tdb.next()){
+                    if(tdb.getInteger(7) == 1 && tdb.getInteger(5) < 16){
+
+
+
+                        doy="1";
+                        month="1";
+                        day = "1";
+                        year=""+(tdb.getInteger(8));
+                    }else{
+                        doy=""+(tdb.getInteger(5));
+                        day=""+tdb.getInteger(6);
+                        month=""+tdb.getInteger(7);
+
+                        year=""+tdb.getInteger(8) ;
+                    }
+
+
+                }
+
+            }else{
+                month= month_in.split("/")[2];
+                year= year_in.split("/")[2];
+                day= day_in.split("/")[2];
+                doy= doy_in.split("/")[2];
+
+
+
+            }
+
+            if(Integer.parseInt(day)<10)
+                day="0"+day;
+
+            if(Integer.parseInt(month)<10)
+                month="0"+month;
+
+
+            System.out.println(""+year+"-"+month+"-"+day+"  "+doy);
+
+
+            httpMng.setUrl(WS_MODIS_SEARCH4FILES+"start="+year+"-"+month+"-"+day+"&stop="+year+"-"+month+"-"+day+
+                    "&coordsOrTiles=tiles&north="+tile_y+"&south="+tile_y+"&east="+tile_x+"&west="+tile_x+"&product="+product+"&collection="+collection);
+
+
+            db = DocumentBuilderFactory.newInstance().newDocumentBuilder();
+            is = new InputSource();
+            is.setCharacterStream(new StringReader(httpMng.sendGet()));
+
+            doc = db.parse(is);
+
+            doc.getDocumentElement().normalize();
+
+            System.out.println("Root element :" + doc.getDocumentElement().getNodeName());
+
+            nList = doc.getElementsByTagName("return");
+
+            if(nList.getLength()<1){
+                System.out.println("No result");
+            }else {
+                fileList =  nList.item(0).getTextContent();
+
+                for (int icount = 1; icount < nList.getLength(); icount++) {
+
+                    fileList = fileList + "," + nList.item(icount).getTextContent();
+                }
+                System.out.println("IDs List: "+fileList);
+
+
+                httpMng.setUrl(WS_MODIS_GETFILEURL+"fileIds="+fileList);
+                is.setCharacterStream(new StringReader(httpMng.sendGet()));
+
+                doc = db.parse(is);
+
+                doc.getDocumentElement().normalize();
+
+                System.out.println("Root element :" + doc.getDocumentElement().getNodeName());
+
+                nList = doc.getElementsByTagName("return");
+
+                if(nList.getLength()<1){
+                    System.out.println("No files found");
+                }else {
+
+
+                    for (int icount = 0; icount < nList.getLength(); icount++) {
+
+                        System.out.println("Elem : "+nList.item(icount).getTextContent());
+
+                        builder = new ProcessBuilder();
+                        builder.redirectErrorStream(true);  //Redirect error on stdout
+
+                        builder.command("wget","-e", "robots=off","-O",TMP_DIR+"/prod"+icount+".hdf",nList.item(icount).getTextContent(),"--header", "Authorization: Bearer "+app_key);
+
+                        System.out.println("Starting shell procedure");
+
+                        process = builder.start();
+
+                        streamGobbler =
+                                new StreamGobbler(process.getInputStream(), System.out::println);
+                        Executors.newSingleThreadExecutor().submit(streamGobbler);
+
+                        exitCode = process.waitFor();
+                        assert exitCode == 0;
+
+
+                        //Extracting EVI
+                        System.out.println("extracting EVI...");
+
+                        builder.redirectErrorStream(true);  //Redirect error on stdout
+
+                        builder.command("/usr/bin/import_evi.sh",year,doy,""+icount);
+
+                        System.out.println("Starting shell procedure");
+
+                        process = builder.start();
+
+
+                        streamGobbler =
+                                new StreamGobbler(process.getInputStream(), System.out::println);
+                        Executors.newSingleThreadExecutor().submit(streamGobbler);
+
+                        exitCode = process.waitFor();
+                        assert exitCode == 0;
+
+                    }
+
+                    //Extracting EVI
+                    System.out.println("saving EVI...");
+
+                    builder.redirectErrorStream(true);  //Redirect error on stdout
+
+                    builder.command("/usr/bin/save_evi_pgsql.sh",year,doy,tile_y+"-"+tile_x);
+
+                    System.out.println("Starting shell procedure");
+
+                    process = builder.start();
+
+
+                    streamGobbler =
+                            new StreamGobbler(process.getInputStream(), System.out::println);
+                    Executors.newSingleThreadExecutor().submit(streamGobbler);
+
+                    exitCode = process.waitFor();
+                    assert exitCode == 0;
+
+                    if(skip_vci.matches("1")) {
+
+                        System.out.println("Calculating VCI..."+doy+"-"+year);
+
+                        sqlString = "select  postgis.calculate_vci_simple(?, ?)";
+                        tdb.setPreparedStatementRef(sqlString);
+                        tdb.setParameter(DBManager.ParameterType.INT,doy,1);
+                        tdb.setParameter(DBManager.ParameterType.INT,year,2);
+                        tdb.runPreparedQuery();
+
+                        if(tdb.next()){
+                            System.out.println("Success.");
+                        }else{
+                            System.out.println("Attempt calculate VCI.");
+                        }
+
+                        System.out.println("Calculating E-VCI..."+doy+"-"+year);
+
+                        sqlString = "select  postgis.calculate_evci_simple(?, ?)";
+                        tdb.setPreparedStatementRef(sqlString);
+                        tdb.setParameter(DBManager.ParameterType.INT,doy,1);
+                        tdb.setParameter(DBManager.ParameterType.INT,year,2);
+                        tdb.runPreparedQuery();
+
+                        if(tdb.next()){
+                            System.out.println("Success.");
+                        }else{
+                            System.out.println("Attempt calculate E-VCI.");
+                        }
+                    }
+
+                    System.out.println("Done.");
+
+                }
+            }
+
+
+        }catch(Exception e){
+            System.out.println("Error  : "+e.getMessage());
+
+            try {
+                tdb.closeConnection();
+            } catch (SQLException ee) {
+                ee.printStackTrace();
+            }
+
+            return Response.status(500).entity("Error during import procedure!").build();
+
+        }finally {
+            try {
+                tdb.closeConnection();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+
         }
 
         return Response.status(200).entity("Image saved!").build();
