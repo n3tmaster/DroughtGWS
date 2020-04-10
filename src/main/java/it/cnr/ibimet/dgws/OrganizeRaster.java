@@ -394,7 +394,7 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
 
     @POST
-    @Path("/j_organize_evi{year}/{doy}/{tile_ref}")
+    @Path("/j_organize_evi/{year}/{doy}/{tile_ref}")
     public Response saveEVI( @PathParam("year") String year,
                               @PathParam("doy") String doy,
                               @PathParam("tile_ref") String tile_ref){
