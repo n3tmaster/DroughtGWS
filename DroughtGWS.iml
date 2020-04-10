@@ -9,11 +9,13 @@
         <webroots>
           <root url="file://$MODULE_DIR$/web" relative="/" />
         </webroots>
-        <sourceRoots />
+        <sourceRoots>
+          <root url="file://$MODULE_DIR$/src/main/java" />
+        </sourceRoots>
       </configuration>
     </facet>
   </component>
-  <component name="NewModuleRootManager" LANGUAGE_LEVEL="JDK_1_6">
+  <component name="NewModuleRootManager" LANGUAGE_LEVEL="JDK_1_8">
     <output url="file://$MODULE_DIR$/target/classes" />
     <output-test url="file://$MODULE_DIR$/target/test-classes" />
     <content url="file://$MODULE_DIR$">
@@ -24,9 +26,8 @@
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
-    <orderEntry type="library" scope="PROVIDED" name="Tomcat 7.0.65" level="application_server_libraries" />
-    <orderEntry type="library" name="utils-1" level="project" />
-    <orderEntry type="library" name="javax.mail:mail:1.4.7" level="project" />
+    <orderEntry type="library" name="javax.ws.rs-api-2.1.1" level="project" />
+    <orderEntry type="library" name="JAX-RS-2.1.1" level="project" />
     <orderEntry type="library" name="Maven: org.glassfish.jersey.containers:jersey-container-servlet-core:2.26-b03" level="project" />
     <orderEntry type="library" name="Maven: org.glassfish.hk2.external:javax.inject:2.5.0-b36" level="project" />
     <orderEntry type="library" name="Maven: org.glassfish.jersey.core:jersey-common:2.26-b03" level="project" />
@@ -48,10 +49,11 @@
     <orderEntry type="library" name="Maven: org.glassfish.jersey.core:jersey-client:2.26-b03" level="project" />
     <orderEntry type="library" name="Maven: org.glassfish.jersey.containers:jersey-container-servlet:2.26-b03" level="project" />
     <orderEntry type="library" name="Maven: org.glassfish.jersey.media:jersey-media-sse:2.26-b03" level="project" />
-    <orderEntry type="library" name="Maven: org.gdal:gdal:2.1.0" level="project" />
+    <orderEntry type="library" name="Maven: org.gdal:gdal:2.2.0" level="project" />
     <orderEntry type="library" name="Maven: commons-io:commons-io:2.5" level="project" />
     <orderEntry type="library" name="Maven: org.postgresql:postgresql:42.0.0" level="project" />
     <orderEntry type="library" name="Maven: org.apache.clerezza.ext:org.json.simple:0.4" level="project" />
     <orderEntry type="library" name="Maven: com.googlecode.json-simple:json-simple:1.1" level="project" />
+    <orderEntry type="library" name="utils-1" level="project" />
   </component>
 </module>
