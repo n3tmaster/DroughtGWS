@@ -851,6 +851,240 @@ public class OrganizeRaster extends Application implements SWH4EConst {
     }
 
 
+    @GET
+    @Path("/j_calculate_mc_vci/{nthread}/{year}/{doy}")
+    public Response updateVCI2(@PathParam("nthread") int nthread,
+                               @PathParam("year") int year,
+                                @PathParam("doy") int doy){
+
+
+        System.out.println("VCI Multithread start");
+
+
+
+        MCProcedures mcp=null;
+        int retCode = -1;
+        try {
+
+
+
+
+            mcp = new MCProcedures("jdbc/ssdb");
+
+
+            retCode = mcp.perform_vci_calculus(nthread,year,doy);
+
+
+
+        }catch(SQLException sqle){
+            System.out.println("Error SQL : "+sqle.getMessage());
+
+
+            try{
+
+                mcp.closeConnection();
+
+            }catch (Exception ee){
+                System.out.println("Error ee "+ee.getMessage());
+                try{
+
+
+                    mcp.closeConnection();
+                }catch (Exception eee){
+                    System.out.println("Error eee "+eee.getMessage());
+                }
+            }
+
+            return Response.status(500).entity("Error during import procedure!").build();
+
+        } catch (InterruptedException e) {
+            mcp.shutdownExecutor();
+            return Response.status(500).entity("Executor interrupted!").build();
+        }catch(Exception e){
+            System.out.println("Error generico : "+e.getMessage());
+
+
+            try{
+
+
+                mcp.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+            return Response.status(500).entity("Error during import procedure!").build();
+
+        } finally{
+
+            if(retCode != 0) {
+
+                mcp.shutdownExecutor();
+                System.out.println("Shutdown complete");
+            }
+        }
+
+        return Response.status(200).entity("VCI data updated!").build();
+
+    }
+
+    @GET
+    @Path("/j_calculate_mc_vhi/{nthread}/{year}/{doy}")
+    public Response updateVHI2(@PathParam("nthread") int nthread,
+                               @PathParam("year") int year,
+                               @PathParam("doy") int doy){
+
+
+        System.out.println("VHI Multithread start");
+
+
+        MCProcedures mcp=null;
+        int retCode = -1;
+        try {
+
+
+
+
+            mcp = new MCProcedures("jdbc/ssdb");
+
+            retCode = mcp.perform_vhi_calculus(nthread,year,doy);
+
+
+
+        }catch(SQLException sqle){
+            System.out.println("Error SQL : "+sqle.getMessage());
+
+
+            try{
+
+
+                mcp.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error ee "+ee.getMessage());
+                try{
+
+
+                    mcp.closeConnection();
+                }catch (Exception eee){
+                    System.out.println("Error eee "+eee.getMessage());
+                }
+            }
+
+            return Response.status(500).entity("Error during import procedure!").build();
+
+        } catch (InterruptedException e) {
+            mcp.getExecutor().shutdownNow();
+            return Response.status(500).entity("Executor interrupted!").build();
+        }catch(Exception e){
+            System.out.println("Error generico : "+e.getMessage());
+
+
+            try{
+
+
+                mcp.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+            return Response.status(500).entity("Error during import procedure!").build();
+
+        } finally{
+
+            if(retCode != 0) {
+                mcp.shutdownExecutor();
+                System.out.println("Shutdown complete");
+            }
+        }
+
+
+
+
+
+
+        return Response.status(200).entity("VCI data updated!").build();
+
+    }
+
+
+    @GET
+    @Path("/j_calculate_mc_evci/{nthread}/{year}/{doy}")
+    public Response updateEVCI2(@PathParam("nthread") int nthread,
+                               @PathParam("year") int year,
+                               @PathParam("doy") int doy){
+
+
+        System.out.println("E-VCI Multithread start");
+
+
+        MCProcedures mcp=null;
+        int retCode = -1;
+        try {
+
+
+
+
+
+            mcp = new MCProcedures("jdbc/ssdb");
+
+            retCode = mcp.perform_evci_calculus(nthread,year,doy);
+
+
+
+        }catch(SQLException sqle){
+            System.out.println("Error SQL : "+sqle.getMessage());
+
+
+            try{
+
+                mcp.closeConnection();
+
+            }catch (Exception ee){
+                System.out.println("Error ee "+ee.getMessage());
+                try{
+
+
+                    mcp.closeConnection();
+                }catch (Exception eee){
+                    System.out.println("Error eee "+eee.getMessage());
+                }
+            }
+
+            return Response.status(500).entity("Error during import procedure!").build();
+
+        } catch (InterruptedException e) {
+            mcp.getExecutor().shutdownNow();
+            return Response.status(500).entity("Executor interrupted!").build();
+        }catch(Exception e){
+            System.out.println("Error generico : "+e.getMessage());
+
+
+            try{
+
+                mcp.closeConnection();
+
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+            return Response.status(500).entity("Error during import procedure!").build();
+
+        } finally{
+
+            if(retCode != 0) {
+                mcp.shutdownExecutor();
+            }
+        }
+
+
+
+
+
+
+        return Response.status(200).entity("VCI data updated!").build();
+
+    }
+
+
     /**
      * Method for update EVI and NDVI images from MODIS
      *
@@ -1406,8 +1640,9 @@ public class OrganizeRaster extends Application implements SWH4EConst {
      * @return
      */
     @GET
-    @Path("/j_update_vhi/{typ}{year_in:(/year_in/.+?)?}{month_in:(/month_in/.+?)?}{day_in:(/day_in/.+?)?}{doy_in:(/doy_in/.+?)?}")
+    @Path("/j_update_vhi/{typ}/{nthreads}{year_in:(/year_in/.+?)?}{month_in:(/month_in/.+?)?}{day_in:(/day_in/.+?)?}{doy_in:(/doy_in/.+?)?}")
     public Response updateVHI(@PathParam("typ") String typ,
+                              @PathParam("nthreads") int nthreads,
                               @PathParam("year_in") String year_in,
                                   @PathParam("month_in") String month_in,
                                   @PathParam("day_in") String day_in,
@@ -1415,20 +1650,16 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
 
         TDBManager tdb=null;
-        String fileList = "",sqlString="";
-        ProcessBuilder builder=null;
-        HttpURLManager httpMng=new HttpURLManager();
+
         String year="";
         String month="";
         String day="";
         String doy="";
-        Process process=null;
-        DocumentBuilder db = null;
-        InputSource is = null;
-        Document doc=null;
-        NodeList nList=null;
-        StreamGobbler streamGobbler;
-        int exitCode;
+        String sqlString ="";
+        MCProcedures mcp= null;
+
+
+        int retCode = -1;
         List<String> arguments=null;
 
 
@@ -1466,7 +1697,8 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
 
                 }
-
+                System.out.println("closing connection..");
+                tdb.closeConnection();
             }else{
                 month= month_in.split("/")[2];
                 year= year_in.split("/")[2];
@@ -1487,53 +1719,38 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
             System.out.println("Calculating VHI..."+doy+"-"+year);
 
-            sqlString = "select  postgis.calculate_vhi(?, ?)";
-            tdb.setPreparedStatementRef(sqlString);
-            tdb.setParameter(DBManager.ParameterType.INT,doy,1);
-            tdb.setParameter(DBManager.ParameterType.INT,year,2);
-            tdb.runPreparedQuery();
+            mcp = new MCProcedures("jdbc/ssdb");
+            retCode=mcp.perform_vhi_calculus(nthreads,Integer.parseInt(year),Integer.parseInt(year));
 
-            if(tdb.next()){
-                System.out.println("Success.");
-            }else{
-                System.out.println("Attempt calculate VHI.");
-            }
-
-            System.out.println("Calculating E-VHI..."+doy+"-"+year);
-
-            sqlString = "select  postgis.calculate_evhi(?, ?)";
-            tdb.setPreparedStatementRef(sqlString);
-            tdb.setParameter(DBManager.ParameterType.INT,doy,1);
-            tdb.setParameter(DBManager.ParameterType.INT,year,2);
-            tdb.runPreparedQuery();
-
-            if(tdb.next()){
-                System.out.println("Success.");
-            }else{
-                System.out.println("Attempt calculate E-VHI.");
-            }
             System.out.println("Done.");
 
 
 
+        }catch (InterruptedException e) {
+            mcp.shutdownExecutor();
+            return Response.status(500).entity("Executor interrupted!").build();
         }catch(Exception e){
             System.out.println("Error  : "+e.getMessage());
+
             try {
+                mcp.closeConnection();
                 tdb.closeConnection();
             } catch (SQLException ee) {
-               ee.printStackTrace();
+                System.out.print( ""+ee.getMessage());
+            } catch (Exception eee) {
+                System.out.print( eee.getMessage());
             }
-
 
             return Response.status(500).entity("Error during import procedure!").build();
 
         }finally{
-            try {
-                tdb.closeConnection();
-            } catch (SQLException e) {
-                e.printStackTrace();
+
+            if(retCode != 0) {
+                mcp.shutdownExecutor();
+                System.out.println("Shutdown complete");
             }
         }
+
 
         return Response.status(200).entity("Image saved!").build();
 
@@ -2292,12 +2509,13 @@ public class OrganizeRaster extends Application implements SWH4EConst {
      * @return
      */
     @GET
-    @Path("/j_update_evi2/{product}/{collection}/{tile_y}/{tile_x}/{skip_vci}/{app_key}{year_in:(/year_in/.+?)?}{month_in:(/month_in/.+?)?}{day_in:(/day_in/.+?)?}{doy_in:(/doy_in/.+?)?}")
+    @Path("/j_update_evi2/{product}/{collection}/{tile_y}/{tile_x}/{skip_vci}/{nthreads}/{app_key}{year_in:(/year_in/.+?)?}{month_in:(/month_in/.+?)?}{day_in:(/day_in/.+?)?}{doy_in:(/doy_in/.+?)?}")
     public Response updateEviNdvi2(@PathParam("product") String product,
                                   @PathParam("collection") String collection,
                                    @PathParam("tile_y") String tile_y,
                                    @PathParam("tile_x") String tile_x,
                                    @PathParam("skip_vci") String skip_vci,
+                                   @PathParam("nthreads") String nthreads,
                                   @PathParam("app_key") String app_key,
                                   @PathParam("year_in") String year_in,
                                   @PathParam("month_in") String month_in,
@@ -2318,10 +2536,12 @@ public class OrganizeRaster extends Application implements SWH4EConst {
         InputSource is = null;
         Document doc=null;
         NodeList nList=null;
+        MCProcedures mcp=null;
         StreamGobbler streamGobbler;
         int exitCode;
         List<String> arguments=null;
 
+        int retCode=-1;
         System.out.println("Start");
         System.out.println("app_key: "+app_key);
         try {
@@ -2357,6 +2577,8 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
 
                 }
+                System.out.println("closing connection..");
+                tdb.closeConnection();
 
             }else{
                 month= month_in.split("/")[2];
@@ -2485,33 +2707,30 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
                     if(skip_vci.matches("1")) {
 
-                        System.out.println("Calculating VCI..."+doy+"-"+year);
 
-                        sqlString = "select  postgis.calculate_vci_simple(?, ?)";
-                        tdb.setPreparedStatementRef(sqlString);
-                        tdb.setParameter(DBManager.ParameterType.INT,doy,1);
-                        tdb.setParameter(DBManager.ParameterType.INT,year,2);
-                        tdb.runPreparedQuery();
 
-                        if(tdb.next()){
-                            System.out.println("Success.");
+                        System.out.println("Calculating VCI..."+doy+"-"+year+" - N threads: "+nthreads);
+
+                        mcp = new MCProcedures("jdbc/ssdb");
+
+                        retCode = mcp.perform_vci_calculus(Integer.parseInt(nthreads),
+                                Integer.parseInt(year),
+                                Integer.parseInt(doy));
+
+
+                        if(retCode != 0) {
+                            mcp.closeConnection();
+                            mcp.shutdownExecutor();
+                            System.out.println("Shutdown complete");
                         }else{
-                            System.out.println("Attempt calculate VCI.");
+                            retCode = -1;
+                            retCode = mcp.perform_evci_calculus(Integer.parseInt(nthreads),
+                                    Integer.parseInt(year),
+                                    Integer.parseInt(doy));
+
                         }
 
-                        System.out.println("Calculating E-VCI..."+doy+"-"+year);
 
-                        sqlString = "select  postgis.calculate_evci_simple(?, ?)";
-                        tdb.setPreparedStatementRef(sqlString);
-                        tdb.setParameter(DBManager.ParameterType.INT,doy,1);
-                        tdb.setParameter(DBManager.ParameterType.INT,year,2);
-                        tdb.runPreparedQuery();
-
-                        if(tdb.next()){
-                            System.out.println("Success.");
-                        }else{
-                            System.out.println("Attempt calculate E-VCI.");
-                        }
                     }
 
                     System.out.println("Done.");
@@ -2520,24 +2739,29 @@ public class OrganizeRaster extends Application implements SWH4EConst {
             }
 
 
+        }catch (InterruptedException e) {
+            mcp.shutdownExecutor();
+            return Response.status(500).entity("Executor interrupted!").build();
         }catch(Exception e){
             System.out.println("Error  : "+e.getMessage());
 
             try {
+                mcp.closeConnection();
                 tdb.closeConnection();
             } catch (SQLException ee) {
-                ee.printStackTrace();
+               System.out.print( ""+ee.getMessage());
+            } catch (Exception eee) {
+                System.out.print( eee.getMessage());
             }
 
             return Response.status(500).entity("Error during import procedure!").build();
 
-        }finally {
-            try {
-                tdb.closeConnection();
-            } catch (SQLException e) {
-                e.printStackTrace();
-            }
+        }finally{
 
+            if(retCode != 0) {
+                mcp.shutdownExecutor();
+                System.out.println("Shutdown complete");
+            }
         }
 
         return Response.status(200).entity("Image saved!").build();
