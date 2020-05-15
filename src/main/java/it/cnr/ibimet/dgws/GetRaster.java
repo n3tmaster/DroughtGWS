@@ -167,11 +167,11 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
             //Check for seasonal request
             if(image_type.matches("crud") || image_type.matches("ecad")){
 
-                sqlString = "select ST_AsText(ST_Envelope(postgis.calculate_seasonal_forecast_spi3(" +
+                sqlString = "select ST_AsText(ST_ConvexHull(postgis.calculate_seasonal_forecast_spi3(" +
                         "ST_Transform(ST_GeomFromText('"+polygon.split("/")[2]+"',"+srid_from.split("/")[2]+"),"+DBSRID+"),"+year+","+doy+",'"+image_type+"')))";
 
             }else{
-                sqlString = "select ST_AsText(ST_Envelope(" +
+                sqlString = "select ST_AsText(ST_ConvexHull(" +
                         "(select ST_Clip(ST_Union(rast),ST_Transform(ST_GeomFromText('"+ polygon.split("/")[2]+"',"+srid_from.split("/")[2]+"),"+DBSRID+"), true) " +
                         "from postgis."+image_type+" as a inner join postgis.acquisizioni as b using (id_acquisizione) "+
                         "where extract('year' from b.dtime) = "+year+" "+
