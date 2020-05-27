@@ -56,8 +56,6 @@ BEGIN
     IF EXISTS (SELECT * FROM pg_tables WHERE tablename = 'lst_'||ycount||'_'||mcount) THEN
         RAISE NOTICE 'Found';
         RAISE NOTICE 'Get reference tile';
-        --TODO: in future version it will be necessary get reference tile from destination table if exists
---	sqlStr := 'SELECT rast FROM lst_'||ycount||'_'||mcount||' LIMIT 1';
 
         sqlStr := 'SELECT rast FROM postgis.lst LIMIT 1';
         EXECUTE sqlStr INTO ref_rast;
@@ -143,7 +141,6 @@ BEGIN
     IF EXISTS (SELECT * FROM pg_tables WHERE tablename = 'ndvi_'||ycount||'_'||mcount) THEN
         RAISE NOTICE 'Found';
         RAISE NOTICE 'Get reference tile';
-        --TODO: in future version it will be necessary get reference tile from destination table if exists
 
         sqlStr := 'SELECT rast FROM postgis.ndvi LIMIT 1';
         EXECUTE sqlStr INTO ref_rast;
@@ -231,7 +228,6 @@ BEGIN
     IF EXISTS (SELECT * FROM pg_tables WHERE tablename = 'evi_'||ycount||'_'||mcount) THEN
         RAISE NOTICE 'Found';
         RAISE NOTICE 'Get reference tile';
-        --TODO: in future version it will be necessary get reference tile from destination table if exists
 
         sqlStr := 'SELECT rast FROM postgis.evi LIMIT 1';
         EXECUTE sqlStr INTO ref_rast;

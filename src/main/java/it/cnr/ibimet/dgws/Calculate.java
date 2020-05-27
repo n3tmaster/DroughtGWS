@@ -28,10 +28,14 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
 import java.io.*;
+
 import java.sql.SQLException;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.util.*;
+import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.function.Consumer;
 
 /**
  * Created by lerocchi on 16/02/17.
@@ -1114,5 +1118,126 @@ public class Calculate  extends Application implements SWH4EConst{
         return retData;
 
     }
+
+
+
+
+    @GET
+    @Produces("image/png")
+    @Path("/j_heat_map_calc/{streamed}")
+    public Response calcHeatMap(@QueryParam("streamed") String streamed)
+
+    {
+        TDBManager tdb=null;
+
+        double ref_value=0.0;
+        File fileout=null;
+
+        try {
+
+            String legend;
+            int id_ids;
+            ProcessBuilder builder=null;
+            ByteArrayOutputStream is;
+            Process process=null;
+            StreamGobbler streamGobbler;
+
+
+            int exitCode;
+
+            System.out.println("J_HEAT_MAP - start procedure");
+
+
+            tdb = new TDBManager("jdbc/ssdb");
+            String sqlString=null;
+
+
+            builder = new ProcessBuilder();
+            builder.redirectErrorStream(true);  //Redirect error on stdout
+
+            builder.command("rm","-f",System.getProperty("java.io.tmpdir")+"/testout.png");  //TODO: to change with other name when procedure development will be completed
+
+            System.out.println("J_HEAT_MAP - deleting old files");
+            process = builder.start();
+
+            streamGobbler =
+                    new StreamGobbler(process.getInputStream(), System.out::println);
+            Executors.newSingleThreadExecutor().submit(streamGobbler);
+
+            exitCode = process.waitFor();
+            assert exitCode == 0;
+
+            System.out.println("J_HEAT_MAP - perform query");
+            sqlString = "select * from postgis.heat_map_calc()";
+
+            tdb.setPreparedStatementRef(sqlString);
+
+            tdb.runPreparedQuery();
+
+            if (tdb.next()) {
+
+                System.out.println("J_HEAT_MAP - change owner");
+                builder.command("chown","tomcat7:tomcat7",System.getProperty("java.io.tmpdir")+"/testout.png");  //TODO: to change with other name when procedure development will be completed
+
+                process = builder.start();
+
+                streamGobbler =
+                        new StreamGobbler(process.getInputStream(), System.out::println);
+                Executors.newSingleThreadExecutor().submit(streamGobbler);
+
+                exitCode = process.waitFor();
+                assert exitCode == 0;
+
+
+
+                System.out.println("J_HEAT_MAP - Reading file from "+System.getProperty("java.io.tmpdir"));
+                fileout = new File(System.getProperty("java.io.tmpdir") + "/testout.png"); //TODO: change filename
+
+
+
+
+            }
+
+            System.out.println("J_HEAT_MAP - closing connection");
+            tdb.closeConnection();
+
+
+        }catch(Exception e){
+            System.out.println("Error  : "+e.getMessage());
+
+
+            try{
+                System.out.println("J_HEAT_MAP - closing connection");
+                tdb.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }
+
+        Response.ResponseBuilder responseBuilder = Response.ok((Object)fileout);
+        responseBuilder.header("Content-Disposition", "attachment; filename=\"heat_map.png\"");
+
+        return responseBuilder.build();
+
+    }
+
+    private static class StreamGobbler implements Runnable {
+        private InputStream inputStream;
+        private Consumer<String> consumer;
+
+        public StreamGobbler(InputStream inputStream, Consumer<String> consumer) {
+            this.inputStream = inputStream;
+            this.consumer = consumer;
+        }
+
+        @Override
+        public void run() {
+            new BufferedReader(new InputStreamReader(inputStream)).lines()
+                    .forEach(consumer);
+        }
+    }
+
 
 }

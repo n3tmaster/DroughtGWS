@@ -149,10 +149,6 @@ public interface SWH4EConst {
 
     int TILE_LENGTH = 30;
 
-    //email list
-    //TODO: Da cambiare appena possibile
-    String EMAILFROM = "lerocchi@gmail.com";
-    String EMAILTO = "l.rocchi@ibimet.cnr.it";
 
     String GTIFF = "GTIFF";
     String PNG = "PNG";

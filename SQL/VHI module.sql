@@ -496,3 +496,142 @@ END;
 $BODY$
   LANGUAGE plpgsql VOLATILE
 
+
+
+-- FUNCTION: postgis.calculate_evci2(integer, integer)
+
+-- DROP FUNCTION postgis.deduplicate_evci(integer, integer);
+
+CREATE OR REPLACE FUNCTION postgis.deduplicate_vhi(
+    doy_in integer,
+    year_in integer)
+    RETURNS boolean
+    LANGUAGE 'plpgsql'
+
+    COST 100
+    VOLATILE
+AS $BODY$
+DECLARE
+    --LST rasters
+
+    vhi    RASTER;
+    lst_i RECORD;
+    maxrast RASTER;
+    minrast RASTER;
+    icount INT;
+    return_rast minmaxrast;
+    puppa INT;
+    imgtype_in INT;
+    id_acquisizione_in INT;
+
+BEGIN
+
+
+    select id_acquisizione into id_acquisizione_in
+    from   postgis.acquisizioni inner join postgis.imgtypes using (id_imgtype)
+    where  imgtype = 'VHI'
+      and    extract(doy from dtime) = doy_in
+      and    extract(year from dtime) = year_in;
+
+
+    FOR lst_i IN select ST_ConvexHull(rast) as ext, count(*) as num_tiles
+                 from postgis.vhi
+                 where id_acquisizione = id_acquisizione_in
+                 group by st_convexhull(rast)
+                 having count(*) > 1
+
+        LOOP
+            DELETE FROM postgis.vhi
+            WHERE gid = (SELECT gid FROM postgis.vhi
+                         WHERE id_acquisizione = id_acquisizione_in
+                           AND   ST_ConvexHull(rast) = lst_i.ext
+                         LIMIT 1);
+
+            RAISE NOTICE 'erased';
+        END LOOP;
+    RAISE NOTICE 'Process concluded... %', current_timestamp;
+    RAISE NOTICE 'done';
+    RETURN TRUE;
+END;
+$BODY$;
+
+-- FUNCTION: versione vhi2 per Multi threads
+
+CREATE OR REPLACE FUNCTION postgis.calculate_vhi2(
+    doy_in integer,
+    year_in integer,
+    poly_in geometry)
+    RETURNS boolean
+    LANGUAGE 'plpgsql'
+
+    COST 100
+    VOLATILE
+AS $BODY$  DECLARE
+
+    tci RASTER;
+    tci2 RASTER;
+
+    vhi RASTER;
+
+    id_acquisizione_in INT;
+    tci_count INT;
+    lst_i RECORD;
+BEGIN
+    RAISE NOTICE 'Calculating VHI raster for doy: % and year: %',doy_in,year_in;
+
+
+
+
+
+        select id_acquisizione into id_acquisizione_in
+        from   postgis.acquisizioni inner join postgis.imgtypes using (id_imgtype)
+        where  imgtype = 'VHI'
+          and    extract(doy from dtime) = doy_in
+          and    extract(year from dtime) = year_in;
+
+	RAISE NOTICE 'ids: %',id_acquisizione_in;
+
+    FOR lst_i IN select rast as vci_rast, ST_ConvexHull(rast) as ext
+                 from postgis.vci inner join postgis.acquisizioni
+                                             using (id_acquisizione)
+                 where extract(doy from dtime) = doy_in
+                   and   extract(year from dtime) = year_in
+                   and   ST_Intersects(rast, poly_in)
+        LOOP
+
+			RAISE NOTICE 'Calculte TCI mean';
+            WITH base_mean AS (select rast
+            from postgis.tci inner join postgis.acquisizioni
+                                        using (id_acquisizione)
+            where extract(doy from dtime) = doy_in
+              and   extract(year from dtime) = year_in
+              and   ST_ConvexHull(rast) = lst_i.ext
+			UNION
+			select rast
+            from postgis.tci inner join postgis.acquisizioni
+                                        using (id_acquisizione)
+            where extract(doy from dtime) = (doy_in + 8)
+              and   extract(year from dtime) = year_in
+              and   ST_ConvexHull(rast) = lst_i.ext)
+            SELECT ST_Union(rast,'MEAN') INTO tci2 FROM base_mean;
+
+            RAISE NOTICE 'Resampling TCI';
+            tci2 := ST_Resample(tci2, lst_i.vci_rast);
+
+
+            RAISE NOTICE 'Calculate VHI raster...';
+            vhi := ST_MapAlgebra(ARRAY[ROW(lst_i.vci_rast,1), ROW(tci2,1)]::rastbandarg[],
+                                 'postgis.calculate_vhi_raster(double precision[], int[], text[])'::regprocedure,
+                                 '32BF', 'CUSTOM',lst_i.vci_rast, 0, 0, null);
+
+
+            INSERT INTO postgis.vhi (id_acquisizione, rast)
+            VALUES
+            (id_acquisizione_in, ST_Tile(vhi,240,240));
+        END LOOP;
+
+
+    RAISE NOTICE 'done.';
+    RETURN TRUE;
+END;
+$BODY$;

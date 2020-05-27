@@ -935,7 +935,7 @@ begin
     END IF;
 
 
--- TODO: aggiungere il ST_Value
+
     SELECT extract(month from dtime) as dmonth, extract(year from dtime) as dyear, ST_Value(ST_Union(rast) as px_val
     FROM   postgis.monthly_rain INNER JOIN postgis.acquisizioni USING (id_acquisizione)
     WHERE  ST_Intersects(rast,ST_GeomFromText(poly_in,4326))
