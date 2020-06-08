@@ -2,7 +2,6 @@ package it.cnr.ibimet.dgws;
 
 import it.cnr.ibimet.dbutils.SWH4EConst;
 import it.cnr.ibimet.dbutils.TDBManager;
-import it.lr.libs.DBManager;
 
 public class RasterEngine  implements SWH4EConst {
 

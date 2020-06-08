@@ -169,5 +169,14 @@ public interface SWH4EConst {
     public final static String REAL = "real";
 
     public final static String TCI_IMAGE = "TCI";
+    public final static double MAX_POLYGON_AREA = 1500000.0;
+
+    // Error codes
+    public final static String POLYGON_TOO_BIG = "-2: PROVIDED POLYGON IS TOO BIG";
+    public final static String DATA_NOT_FOUND = "-1: DATA NOT FOUND";
+    public final static String POLYGON_IS_MANDATORY = "-3: YOU HAVE TO PROVIDE A POLYGON FOR DATA EXTRACTION";
+    public final static String WRONG_IMAGE_TYPE = "-4: WRONG IMAGE TYPE";
+
+
 
 }

@@ -555,12 +555,14 @@ BEGIN
 END;
 $BODY$;
 
--- FUNCTION: versione vhi2 per Multi threads
+-- FUNCTION: postgis.calculate_vhi2(integer, integer, geometry)
+
+-- DROP FUNCTION postgis.calculate_vhi2(integer, integer, geometry);
 
 CREATE OR REPLACE FUNCTION postgis.calculate_vhi2(
-    doy_in integer,
-    year_in integer,
-    poly_in geometry)
+	doy_in integer,
+	year_in integer,
+	poly_in geometry)
     RETURNS boolean
     LANGUAGE 'plpgsql'
 
@@ -581,8 +583,6 @@ BEGIN
 
 
 
-
-
         select id_acquisizione into id_acquisizione_in
         from   postgis.acquisizioni inner join postgis.imgtypes using (id_imgtype)
         where  imgtype = 'VHI'
@@ -600,38 +600,42 @@ BEGIN
         LOOP
 
 			RAISE NOTICE 'Calculte TCI mean';
+
             WITH base_mean AS (select rast
             from postgis.tci inner join postgis.acquisizioni
                                         using (id_acquisizione)
             where extract(doy from dtime) = doy_in
               and   extract(year from dtime) = year_in
-              and   ST_ConvexHull(rast) = lst_i.ext
+              and   ST_Intersects(rast, lst_i.ext)
 			UNION
 			select rast
             from postgis.tci inner join postgis.acquisizioni
                                         using (id_acquisizione)
             where extract(doy from dtime) = (doy_in + 8)
               and   extract(year from dtime) = year_in
-              and   ST_ConvexHull(rast) = lst_i.ext)
+              and   ST_Intersects(rast, lst_i.ext))
             SELECT ST_Union(rast,'MEAN') INTO tci2 FROM base_mean;
 
-            RAISE NOTICE 'Resampling TCI';
-            tci2 := ST_Resample(tci2, lst_i.vci_rast);
 
+
+
+            RAISE NOTICE 'Clipping and Resampling TCI';
+            tci2 := ST_Resample(ST_Clip(tci2, lst_i.ext, true), lst_i.vci_rast);
 
             RAISE NOTICE 'Calculate VHI raster...';
             vhi := ST_MapAlgebra(ARRAY[ROW(lst_i.vci_rast,1), ROW(tci2,1)]::rastbandarg[],
                                  'postgis.calculate_vhi_raster(double precision[], int[], text[])'::regprocedure,
                                  '32BF', 'CUSTOM',lst_i.vci_rast, 0, 0, null);
 
-
             INSERT INTO postgis.vhi (id_acquisizione, rast)
             VALUES
             (id_acquisizione_in, ST_Tile(vhi,240,240));
         END LOOP;
 
-
     RAISE NOTICE 'done.';
     RETURN TRUE;
 END;
 $BODY$;
+
+ALTER FUNCTION postgis.calculate_vhi2(integer, integer, geometry)
+    OWNER TO postgres;

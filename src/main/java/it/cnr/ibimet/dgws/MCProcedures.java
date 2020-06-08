@@ -4,7 +4,6 @@ import it.cnr.ibimet.dbutils.SWH4EConst;
 import it.cnr.ibimet.dbutils.TDBManager;
 import it.lr.libs.DBManager;
 
-import javax.ws.rs.core.Response;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.ArrayList;
@@ -103,17 +102,21 @@ public class MCProcedures implements SWH4EConst {
         tdb = new TDBManager(db_context);
         String sqlString=null;
 
-        sqlString = "select st_xmin(st_extent(convex_total)), st_ymin(st_extent(convex_total)), "+
+        sqlString =  sqlString = "select st_xmin(st_extent(convex_total)), st_ymin(st_extent(convex_total)), "+
                 "st_xmax(st_extent(convex_total)), st_ymax(st_extent(convex_total)) "+
                 "from "+
                 "(select st_union(st_convexhull(rast)) as convex_total "+
                 "from postgis.ndvi inner join postgis.acquisizioni using (id_acquisizione) "+
-                "where dtime = (select max(dtime) from postgis.acquisizioni inner join postgis.imgtypes using (id_imgtype) "+
-                "where imgtype = 'NDVI') ) as foo";
+                "where dtime = (select dtime from postgis.acquisizioni inner join postgis.imgtypes using (id_imgtype) "+
+                "where imgtype = 'NDVI' and extract(doy from dtime)=? and extract(year from dtime)=? )) as foo";
+
 
 
 
         tdb.setPreparedStatementRef(sqlString);
+        tdb.setParameter(DBManager.ParameterType.INT,""+doy,1);
+        tdb.setParameter(DBManager.ParameterType.INT,""+year,2);
+
 
         tdb.runPreparedQuery();
 
@@ -133,6 +136,32 @@ public class MCProcedures implements SWH4EConst {
         System.out.println("h_part: "+h_part + " w_part: "+w_part);
 
 
+
+        //checking acquisition entry
+        System.out.print("VCI MC: Checking acquisition entry...");
+        sqlString = "select id_acquisizione " +
+                "from   postgis.acquisizioni inner join postgis.imgtypes using (id_imgtype) " +
+                "where  imgtype = 'VCI' " +
+                "and    extract(doy from dtime) = ? " +
+                "and    extract(year from dtime) = ?";
+
+        tdb.setPreparedStatementRef(sqlString);
+        tdb.setParameter(DBManager.ParameterType.INT,""+doy,1);
+        tdb.setParameter(DBManager.ParameterType.INT,""+year,2);
+
+        tdb.runPreparedQuery();
+        if(tdb.next()){
+            System.out.println("VCI MC: exists at "+doy+" "+year);
+        }else{
+            System.out.println("VCI MC: creating acquisition entry at "+doy+" "+year);
+            sqlString = "INSERT INTO postgis.acquisizioni (dtime, id_imgtype)" +
+                    " VALUES (to_timestamp('"+year+" "+doy+"', 'YYYY DDD')," +
+                    "(select id_imgtype from postgis.imgtypes where imgtype='VCI'))";
+            tdb.setPreparedStatementRef(sqlString);
+            tdb.performInsert();
+        }
+
+
         //deleting old vci
         System.out.println("deleting old vci "+year+" "+doy);
         sqlString = "delete from postgis.vci where id_acquisizione = " +
@@ -148,7 +177,7 @@ public class MCProcedures implements SWH4EConst {
         // Create a new ExecutorService with 10 thread to execute and store the Futures. Each one represent one spi thread
         executor = Executors.newFixedThreadPool((int)((nthread*nthread)+5));
 
-        //           executor = Executors.newCachedThreadPool();
+
         // Wait until all results are available and combine them at the same time
 
         System.out.println("VCI -  colosing connection...");
@@ -260,10 +289,16 @@ public class MCProcedures implements SWH4EConst {
                 "from "+
                 "(select st_union(st_convexhull(rast)) as convex_total "+
                 "from postgis.evi inner join postgis.acquisizioni using (id_acquisizione) "+
-                "where dtime = (select min(dtime) from postgis.acquisizioni inner join postgis.imgtypes using (id_imgtype) "+
-                "where imgtype = 'EVI') ) as foo";
+                "where dtime = (select dtime from postgis.acquisizioni inner join postgis.imgtypes using (id_imgtype) "+
+                "where imgtype = 'EVI' and extract(doy from dtime)=? and extract(year from dtime)=? )) as foo";
+
+
+        System.out.println("VCI MC: "+sqlString);
 
         tdb.setPreparedStatementRef(sqlString);
+        tdb.setParameter(DBManager.ParameterType.INT,""+doy,1);
+        tdb.setParameter(DBManager.ParameterType.INT,""+year,2);
+
 
         tdb.runPreparedQuery();
 
@@ -499,7 +534,7 @@ public class MCProcedures implements SWH4EConst {
                 i++;
             }
         }
-
+        System.out.println("VHI MC : max pool - "+((nthread*nthread)+5)+" tot assigned: "+i);
 
         for (FutureTask futureTask : taskList) {
             resultFuture += (Long)futureTask.get();

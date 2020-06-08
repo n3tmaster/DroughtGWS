@@ -1,39 +1,26 @@
 package it.cnr.ibimet.dgws;
 
 
-import it.cnr.ibimet.dbutils.ChartParams;
 import it.cnr.ibimet.dbutils.SWH4EConst;
 import it.cnr.ibimet.dbutils.TDBManager;
-import it.cnr.ibimet.dbutils.TableSchema;
 import it.lr.libs.DBManager;
 
 
-import org.gdal.gdal.Dataset;
-import org.gdal.gdal.gdal;
-import org.gdal.ogr.DataSource;
-import org.gdal.ogr.Driver;
-import org.gdal.ogr.ogr;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 
 
-import javax.imageio.ImageIO;
 import javax.ws.rs.*;
 import javax.ws.rs.core.Application;
 
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
-import java.awt.*;
-import java.awt.image.BufferedImage;
-import java.awt.image.DataBufferByte;
 import java.io.*;
 
-import java.sql.SQLException;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.util.*;
-import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 
@@ -49,7 +36,7 @@ import java.util.function.Consumer;
 /**
  * Created by lerocchi on 14/09/17.
  */
-public class Calculate  extends Application implements SWH4EConst{
+public class Calculate  extends Application implements SWH4EConst {
 
 
     @GET

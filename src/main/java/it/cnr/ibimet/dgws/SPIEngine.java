@@ -4,11 +4,9 @@ import it.cnr.ibimet.dbutils.SWH4EConst;
 import it.cnr.ibimet.dbutils.TDBManager;
 import it.lr.libs.DBManager;
 
-import java.sql.SQLException;
-
 /**
  * Created by lerocchi on 16/11/17.
- */public class SPIEngine  implements SWH4EConst{
+ */public class SPIEngine  implements SWH4EConst {
 
 
     SPIEngine(){ }

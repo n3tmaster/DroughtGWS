@@ -520,3 +520,43 @@ $BODY$;
 ALTER FUNCTION postgis.calculate_last_element_2(character varying, integer, character varying)
     OWNER TO postgres;
 
+
+
+
+
+
+-- Generic extraction procedure
+-- INPUT
+--    image type
+--    dtime
+--    polygon
+CREATE OR REPLACE FUNCTION postgis.extract_image(
+	imgtype_in varchar,
+	dtime_in timestamp,
+	polygon_in geometry)
+    RETURNS raster
+    LANGUAGE 'plpgsql'
+
+    COST 100
+    VOLATILE
+AS $BODY$
+
+DECLARE
+ rast_out RASTER;
+
+BEGIN
+ RAISE NOTICE 'Extracting image';
+
+ RAISE NOTICE 'Calculating cum raster';
+
+  EXECUTE 'SELECT ST_Clip(ST_Union(rast),$1,true) ' ||
+        'FROM postgis.'||imgtype_in||' INNER JOIN postgis.acquisizioni USING (id_acquisizione) '||
+        'WHERE dtime = $2 '||
+        'AND   ST_Intersects(rast,$1) '
+  INTO rast_out USING polygon_in,dtime_in;
+
+ RAISE NOTICE 'done.';
+ RETURN rast_out;
+END;
+
+$BODY$;

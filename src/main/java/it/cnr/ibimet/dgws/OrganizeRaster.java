@@ -7,8 +7,6 @@ import javax.ws.rs.*;
 
 import it.cnr.ibimet.restutil.HttpURLManager;
 import it.lr.libs.DBManager;
-import org.apache.commons.io.IOUtils;
-import org.glassfish.jersey.media.multipart.FormDataContentDisposition;
 import org.glassfish.jersey.media.multipart.FormDataParam;
 import org.w3c.dom.Document;
 import org.w3c.dom.NodeList;
@@ -1680,9 +1678,6 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
                 if(tdb.next()){
                     if(tdb.getInteger(7) == 1 && tdb.getInteger(5) < 16){
-
-
-
                         doy="1";
                         month="1";
                         day = "1";
@@ -1691,7 +1686,6 @@ public class OrganizeRaster extends Application implements SWH4EConst {
                         doy=""+(tdb.getInteger(5));
                         day=""+tdb.getInteger(6);
                         month=""+tdb.getInteger(7);
-
                         year=""+tdb.getInteger(8) ;
                     }
 
@@ -1704,9 +1698,6 @@ public class OrganizeRaster extends Application implements SWH4EConst {
                 year= year_in.split("/")[2];
                 day= day_in.split("/")[2];
                 doy= doy_in.split("/")[2];
-
-
-
             }
 
             if(Integer.parseInt(day)<10)
@@ -2509,12 +2500,13 @@ public class OrganizeRaster extends Application implements SWH4EConst {
      * @return
      */
     @GET
-    @Path("/j_update_evi2/{product}/{collection}/{tile_y}/{tile_x}/{skip_vci}/{nthreads}/{app_key}{year_in:(/year_in/.+?)?}{month_in:(/month_in/.+?)?}{day_in:(/day_in/.+?)?}{doy_in:(/doy_in/.+?)?}")
+    @Path("/j_update_evi2/{product}/{collection}/{tile_y}/{tile_x}/{skip_vci}/{skip_evci}/{nthreads}/{app_key}{year_in:(/year_in/.+?)?}{month_in:(/month_in/.+?)?}{day_in:(/day_in/.+?)?}{doy_in:(/doy_in/.+?)?}")
     public Response updateEviNdvi2(@PathParam("product") String product,
                                   @PathParam("collection") String collection,
                                    @PathParam("tile_y") String tile_y,
                                    @PathParam("tile_x") String tile_x,
                                    @PathParam("skip_vci") String skip_vci,
+                                   @PathParam("skip_evci") String skip_evci,
                                    @PathParam("nthreads") String nthreads,
                                   @PathParam("app_key") String app_key,
                                   @PathParam("year_in") String year_in,
@@ -2542,8 +2534,8 @@ public class OrganizeRaster extends Application implements SWH4EConst {
         List<String> arguments=null;
 
         int retCode=-1;
-        System.out.println("Start");
-        System.out.println("app_key: "+app_key);
+        System.out.println("J_UPDATE_EVI2:  Start");
+        System.out.println("J_UPDATE_EVI2:  app_key: "+app_key);
         try {
             if(year_in.matches("") || year_in == null){
                 tdb = new TDBManager("jdbc/ssdb");
@@ -2577,7 +2569,7 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
 
                 }
-                System.out.println("closing connection..");
+                System.out.println("J_UPDATE_EVI2: closing connection..");
                 tdb.closeConnection();
 
             }else{
@@ -2615,6 +2607,7 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
             if(nList.getLength()<1){
                 System.out.println("No result");
+                retCode = 0;
             }else {
                 fileList =  nList.item(0).getTextContent();
 
@@ -2719,15 +2712,22 @@ public class OrganizeRaster extends Application implements SWH4EConst {
                             mcp.closeConnection();
                             mcp.shutdownExecutor();
                             System.out.println("Shutdown complete");
-                        }else{
+                        }
+
+                        if(skip_evci.matches("1")) {
                             retCode = -1;
                             retCode = mcp.perform_evci_calculus(Integer.parseInt(nthreads),
                                     Integer.parseInt(year),
                                     Integer.parseInt(doy));
-
+                        }else{
+                            retCode = 0;
                         }
 
 
+
+
+                    }else{
+                        retCode = 0;
                     }
 
                     System.out.println("Done.");

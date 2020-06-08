@@ -1,33 +1,18 @@
 package it.cnr.ibimet.dgws;
 
 
-import it.cnr.ibimet.dbutils.ChartParams;
 import it.cnr.ibimet.dbutils.SWH4EConst;
 import it.cnr.ibimet.dbutils.TDBManager;
-import it.cnr.ibimet.dbutils.TableSchema;
 import it.lr.libs.DBManager;
 
 
-import org.gdal.gdal.Dataset;
-import org.gdal.gdal.gdal;
-import org.gdal.ogr.DataSource;
-import org.gdal.ogr.Driver;
-import org.gdal.ogr.ogr;
-import org.json.simple.JSONArray;
-import org.json.simple.JSONObject;
-
-import javax.imageio.ImageIO;
 import javax.ws.rs.*;
 import javax.ws.rs.core.Application;
 
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
-import java.awt.*;
-import java.awt.image.BufferedImage;
-import java.awt.image.DataBufferByte;
 import java.io.*;
-import java.sql.SQLException;
 import java.util.*;
 
 
@@ -567,7 +552,19 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
     }
 
 
-
+    /**
+     * Function for image extraction from provided polygon
+     *
+     * @param image_type
+     * @param year
+     * @param doy
+     * @param polygon
+     * @param sridfrom
+     * @param filename
+     * @return
+     *  Extracted image in png format or an error code: -1 Data not found
+     *                                                  -2 Provided polygon is too big
+     */
     @GET
     @Produces("image/png")
     @Path("/j_get_whole_png/{image_type}/{year}/{doy}{polygon:(/polygon/.+?)?}{srid_from:(/srid_from/.+?)?}{filename:(/filename/.+?)?}")
@@ -581,57 +578,64 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
 
         byte[] imgOut=null;
         TDBManager tdb=null;
-
+        boolean checkArea = false;
 
         try {
 
-            tdb = new TDBManager("jdbc/ssdb");
             String sqlString=null;
 
 
 
             String reclass_param="", legend_param="", rast_out="";
 
-            if(image_type.matches("tci") ){
+
+
+            if(image_type.matches("tci") ) {
                 reclass_param = TCI_RECLASS;
-                legend_param  = TCI_LEGEND;
-                if(polygon.matches("") || polygon == null)
-                    rast_out = "ST_Reclass(ST_Union(rast),1,'"+reclass_param+"','8BUI') ";
-                else
+                legend_param = TCI_LEGEND;
+                if (polygon.matches("") || polygon == null) {
+                    Response.status(Response.Status.OK).entity(POLYGON_IS_MANDATORY).build();
+                }else{
                     rast_out = "ST_Reclass(ST_Clip(ST_Union(rast),1," +
                             "ST_Transform(" +
-                            "ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+"),"+DBSRID+"),-999.0,true),1,'"+reclass_param+"','8BUI',-999.0) ";
+                            "ST_GeomFromText('" + polygon.split("/")[2] + "'," + sridfrom.split("/")[2] + ")," + DBSRID + "),-999.0,true),1,'" + reclass_param + "','8BUI',-999.0) ";
+                    checkArea = true;  //polygon area will be checked
+                }
             }else if(image_type.matches("vci") || image_type.matches("evci") ){
                 reclass_param = VCI_RECLASS;
                 legend_param  = TCI_LEGEND;
-                if(polygon.matches("") || polygon == null)
-                    rast_out = "ST_Reclass(ST_Union(rast),1,'"+reclass_param+"','8BUI') ";
-                else
+                if(polygon.matches("") || polygon == null) {
+                    Response.status(Response.Status.OK).entity(POLYGON_IS_MANDATORY).build();
+                }else {
+                    //calculate polygon area
                     rast_out = "ST_Reclass(ST_Clip(ST_Union(rast),1," +
                             "ST_Transform(" +
-                            "ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+"),"+DBSRID+"),-999.0,true),1,'"+reclass_param+"','8BUI',-999.0) ";
+                            "ST_GeomFromText('" + polygon.split("/")[2] + "'," + sridfrom.split("/")[2] + ")," + DBSRID + "),-999.0,true),1,'" + reclass_param + "','8BUI',-999.0) ";
+                    checkArea = true;  //polygon area will be checked
+                }
             }else if(image_type.substring(0,3).matches("spi")  ){
                 reclass_param = SPI_RECLASS;
                 legend_param  = SPI_LEGEND;
                 if(polygon.matches("") || polygon == null)
-                    rast_out = "ST_Reclass(ST_Union(rast),1,'"+reclass_param+"','8BUI') ";
+                    Response.status(Response.Status.OK).entity(POLYGON_IS_MANDATORY).build();
                 else
                     rast_out = "ST_Reclass(ST_Clip(ST_Union(rast),1,ST_Transform(ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+"),"+DBSRID+"),-999.0,true),1,'"+reclass_param+"','8BUI',-999.0) ";
 
-            }else if(image_type.matches("vhi") || image_type.matches("evhi")){
+            }else if(image_type.matches("vhi") || image_type.matches("evhi")) {
                 reclass_param = VHI_RECLASS;
-                legend_param  = VHI_LEGEND;
-                if(polygon.matches("") || polygon == null)
-                    rast_out = "ST_Reclass(ST_Union(rast),1,'"+reclass_param+"','8BUI') ";
-                else
+                legend_param = VHI_LEGEND;
+                if (polygon.matches("") || polygon == null){
+                    Response.status(Response.Status.OK).entity(POLYGON_IS_MANDATORY).build();
+                }else{
                     rast_out = "ST_Reclass(ST_Clip(ST_Union(rast),1,ST_Transform(ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+"),"+DBSRID+"),-999.0,true),1,'"+reclass_param+"','8BUI',-999.0) ";
-
+                    checkArea = true;  //polygon area will be checked
+                }
             }else{
 
-                legend_param  = "grayscale";
-                rast_out = "ST_Union(rast) ";
+                Response.status(Response.Status.OK).entity(WRONG_IMAGE_TYPE).build();
 
             }
+
 
 
             if(image_type.matches("cru") || image_type.matches("ecad")){
@@ -640,6 +644,7 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
                         CRUD_LEGEND+"','EXACT'))" +
                         ")";
             }else{
+
                 sqlString="select ST_asPNG(ST_ColorMap("+rast_out+",1,'"+legend_param+"','EXACT'),ARRAY[1,2,3,4], ARRAY['ZLEVEL=3']) " +
                         "from postgis."+image_type+" as a inner join postgis.acquisizioni as b using (id_acquisizione) "+
                         "where extract('year' from b.dtime) = "+year+" "+
@@ -650,10 +655,27 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
 
 
 
-            System.out.println(sqlString);
+
+
+            System.out.println("J_GET_WHOLE_PNG: Checking area");
+            if(checkArea){
+                //checking area
+                Procedures thisProc = new Procedures(tdb);
+                double thisArea = thisProc.calcPolygonArea(polygon.split("/")[2],sridfrom.split("/")[2]);
+
+                if(thisArea > MAX_POLYGON_AREA){
+                    try{
+                        tdb.closeConnection();
+                    }catch (Exception ee){
+                        System.out.println("Error "+ee.getMessage());
+                    }
+                    return  Response.status(Response.Status.OK).entity(POLYGON_TOO_BIG).build();
+                }
+            }
+
+            System.out.println("J_GET_WHOLE_PNG:" +sqlString);
 
             tdb.setPreparedStatementRef(sqlString);
-
             tdb.runPreparedQuery();
 
             if (tdb.next()) {
@@ -667,6 +689,8 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
                 }
                 return  Response.status(Response.Status.NOT_FOUND).entity("Image "+image_type+" of "+doy+"-"+year+" not found ").build();
             }
+            System.out.println("J_GET_WHOLE_PNG: closing connection");
+            tdb.closeConnection();
 
         }catch(Exception e){
             System.out.println("Error  : "+e.getMessage());
@@ -678,12 +702,6 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
             }
 
             return Response.status(500).entity(e.getMessage()).build();
-        }finally {
-            try{
-                tdb.closeConnection();
-            }catch (Exception ee){
-                System.out.println("Error "+ee.getMessage());
-            }
         }
 
         if(filename.matches("") || filename == null){
@@ -808,7 +826,17 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
 
     }
 
-
+    /**
+     *
+     * @param image_type
+     * @param year
+     * @param month
+     * @param day
+     * @param polygon
+     * @param sridfrom
+     * @return
+     *  extracted image in png format or an error code
+     */
     @GET
     @Produces("image/png")
     @Path("/j_get_whole_png/{image_type}/{year}/{month}/{day}{polygon:(/polygon/.+?)?}{srid_from:(/srid_from/.+?)?}")
@@ -822,67 +850,90 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
         byte[] imgOut=null;
         TDBManager tdb=null;
 
-
+        boolean checkArea = false;
 
         try {
 
             if (day == null)
                 day = "1";
 
-            tdb = new TDBManager("jdbc/ssdb");
-            String sqlString=null;
+           String sqlString=null;
 
 
             String reclass_param="", legend_param="", rast_out="";
 
 
-            if(image_type.matches("tci") ){
+            if(image_type.matches("tci") ) {
                 reclass_param = TCI_RECLASS;
-                legend_param  = TCI_LEGEND;
-                if(polygon.matches("") || polygon == null)
-                    rast_out = "ST_Reclass(ST_Union(rast),1,'"+reclass_param+"','8BUI') ";
-                else
+                legend_param = TCI_LEGEND;
+                if (polygon.matches("") || polygon == null){
+                    Response.status(Response.Status.OK).entity(POLYGON_IS_MANDATORY).build();
+                }else{
                     rast_out = "ST_Reclass(ST_Clip(ST_Union(rast),1," +
                             "ST_Transform(" +
                             "ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+"),"+DBSRID+"),-999.0,true),1,'"+reclass_param+"','8BUI',-999.0) ";
+                    checkArea = true;  //polygon area will be checked
+                }
             }else if(image_type.matches("vci") || image_type.matches("evci") ){
                 reclass_param = VCI_RECLASS;
                 legend_param  = TCI_LEGEND;
-                if(polygon.matches("") || polygon == null)
-                    rast_out = "ST_Reclass(ST_Union(rast),1,'"+reclass_param+"','8BUI') ";
-                else
+                if(polygon.matches("") || polygon == null) {
+                    Response.status(Response.Status.OK).entity(POLYGON_IS_MANDATORY).build();
+                }else{
                     rast_out = "ST_Reclass(ST_Clip(ST_Union(rast),1," +
                             "ST_Transform(" +
                             "ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+"),"+DBSRID+"),-999.0,true),1,'"+reclass_param+"','8BUI',-999.0) ";
+                    checkArea = true;  //polygon area will be checked
+                }
             }else if(image_type.substring(0,3).matches("spi") ){
                 reclass_param = SPI_RECLASS;
                 legend_param  = SPI_LEGEND;
                 if(polygon.matches("") || polygon == null)
-                    rast_out = "ST_Reclass(ST_Union(rast),1,'"+reclass_param+"','8BUI') ";
+                    Response.status(Response.Status.OK).entity(POLYGON_IS_MANDATORY).build();
                 else
                     rast_out = "ST_Reclass(ST_Clip(ST_Union(rast),1,ST_Transform(ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+"),"+DBSRID+"),true),1,'"+reclass_param+"','8BUI') ";
 
             }else if(image_type.matches("vhi")|| image_type.matches("evhi")){
                 reclass_param = VHI_RECLASS;
                 legend_param  = VHI_LEGEND;
-                if(polygon.matches("") || polygon == null)
-                    rast_out = "ST_Reclass(ST_Union(rast),1,'"+reclass_param+"','8BUI') ";
-                else
+                if(polygon.matches("") || polygon == null) {
+                    Response.status(Response.Status.OK).entity(POLYGON_IS_MANDATORY).build();
+                }else{
                     rast_out = "ST_Reclass(ST_Clip(ST_Union(rast),1,ST_Transform(ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+"),"+DBSRID+"),true),1,'"+reclass_param+"','8BUI') ";
-
+                    checkArea = true;  //polygon area will be checked
+                }
             }else{
-
-                legend_param  = "grayscale";
-                rast_out = "ST_Union(rast) ";
+                Response.status(Response.Status.OK).entity(WRONG_IMAGE_TYPE).build();
 
             }
 
+            tdb = new TDBManager("jdbc/ssdb");
 
             sqlString="select ST_asPNG(ST_ColorMap("+rast_out+",1,'"+legend_param+"','EXACT')) " +
                     "from postgis."+image_type+" as a inner join postgis.acquisizioni as b using (id_acquisizione) "+
                     "where extract('year' from b.dtime) = "+year+" "+
                     "and   extract('month' from b.dtime) = "+month+" "+
                     "and   extract('day' from b.dtime) = "+day;
+
+
+
+            System.out.println("J_GET_WHOLE_PNG: Checking area");
+            if(checkArea){
+                //checking area
+                Procedures thisProc = new Procedures(tdb);
+                double thisArea = thisProc.calcPolygonArea(polygon.split("/")[2],sridfrom.split("/")[2]);
+
+                if(thisArea > MAX_POLYGON_AREA){
+                    try{
+                        tdb.closeConnection();
+                    }catch (Exception ee){
+                        System.out.println("Error "+ee.getMessage());
+                    }
+                    return  Response.status(Response.Status.OK).entity(POLYGON_TOO_BIG).build();
+                }
+            }
+
+            System.out.println("J_GET_WHOLE_PNG:" +sqlString);
 
             tdb.setPreparedStatementRef(sqlString);
 
@@ -899,7 +950,8 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
                 }
                 return  Response.status(Response.Status.NOT_FOUND).entity("Image "+image_type+" of "+day+"-"+month+"-"+year+" not found ").build();
             }
-
+            System.out.println("J_GET_WHOLE_PNG: closing connection");
+            tdb.closeConnection();
         }catch(Exception e){
             System.out.println("Error  : "+e.getMessage());
 
@@ -910,12 +962,6 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
             }
 
             return Response.status(500).entity(e.getMessage()).build();
-        }finally {
-            try{
-                tdb.closeConnection();
-            }catch (Exception ee){
-                System.out.println("Error "+ee.getMessage());
-            }
         }
 
 
@@ -948,19 +994,16 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
 
         Vector<InputStream> inputStreams = new Vector<InputStream>();
 
+
         try {
 
 
 
-            tdb = new TDBManager("jdbc/ssdb");
             String sqlString=null;
 
 
             if(polygon.matches("") || polygon == null){
-                sqlString="select ST_asGDALRaster(ST_Union(rast),'AAIGrid') " +
-                        "from postgis."+image_type+" as a inner join postgis.acquisizioni as b using (id_acquisizione) "+
-                        "where extract('year' from b.dtime) = "+year+" "+
-                        "and   extract('doy' from b.dtime) = "+doy;
+                Response.status(Response.Status.OK).entity(POLYGON_IS_MANDATORY).build();
             }else{
                 sqlString="select ST_asGDALRaster(ST_Clip(ST_Union(rast),1,ST_Transform(ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+"),"+DBSRID+"),true),'AAIGrid') " +
                         "from postgis."+image_type+" as a inner join postgis.acquisizioni as b using (id_acquisizione) "+
@@ -969,6 +1012,23 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
             }
 
 
+            tdb = new TDBManager("jdbc/ssdb");
+
+
+            System.out.println("J_GET_WHOLE_AAIGRID: Checking area");
+
+            //checking area
+            Procedures thisProc = new Procedures(tdb);
+            double thisArea = thisProc.calcPolygonArea(polygon.split("/")[2],sridfrom.split("/")[2]);
+
+            if(thisArea > MAX_POLYGON_AREA){
+                try{
+                    tdb.closeConnection();
+                }catch (Exception ee){
+                    System.out.println("Error "+ee.getMessage());
+                }
+                return  Response.status(Response.Status.OK).entity(POLYGON_TOO_BIG).build();
+            }
 
             tdb.setPreparedStatementRef(sqlString);
 
@@ -985,7 +1045,8 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
                 }
                 return  Response.status(Response.Status.NOT_FOUND).entity("Image "+image_type+" of "+doy+"-"+year+" not found ").build();
             }
-
+            System.out.println("J_GET_WHOLE_AAIGRID: closing connection");
+            tdb.closeConnection();
         }catch(Exception e){
             System.out.println("Error  : "+e.getMessage());
 
@@ -996,12 +1057,6 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
             }
 
             return Response.status(500).entity(e.getMessage()).build();
-        }finally {
-            try{
-                tdb.closeConnection();
-            }catch (Exception ee){
-                System.out.println("Error "+ee.getMessage());
-            }
         }
 
 
@@ -1040,14 +1095,10 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
             if (day == null)
                 day = "1";
 
-            tdb = new TDBManager("jdbc/ssdb");
             String sqlString=null;
             if(polygon.matches("") || polygon == null){
-                sqlString="select ST_asGDALRaster(ST_Union(rast),'AAIGrid') " +
-                        "from postgis."+image_type+" as a inner join postgis.acquisizioni as b using (id_acquisizione) "+
-                        "where extract('year' from b.dtime) = "+year+" "+
-                        "and   extract('month' from b.dtime) = "+month+" "+
-                        "and   extract('day' from b.dtime) = "+day;
+                Response.status(Response.Status.OK).entity(POLYGON_IS_MANDATORY).build();
+
             }else{
                 sqlString="select ST_asGDALRaster(ST_Clip(ST_Union(rast),1,ST_Transform(ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+"),"+DBSRID+"),true),'AAIGrid') " +
                         "from postgis."+image_type+" as a inner join postgis.acquisizioni as b using (id_acquisizione) "+
@@ -1055,8 +1106,23 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
                         "and   extract('month' from b.dtime) = "+month+" "+
                         "and   extract('day' from b.dtime) = "+day;
             }
+            tdb = new TDBManager("jdbc/ssdb");
 
 
+            System.out.println("J_GET_WHOLE_AAIGRID: Checking area");
+
+            //checking area
+            Procedures thisProc = new Procedures(tdb);
+            double thisArea = thisProc.calcPolygonArea(polygon.split("/")[2],sridfrom.split("/")[2]);
+
+            if(thisArea > MAX_POLYGON_AREA){
+                try{
+                    tdb.closeConnection();
+                }catch (Exception ee){
+                    System.out.println("Error "+ee.getMessage());
+                }
+                return  Response.status(Response.Status.OK).entity(POLYGON_TOO_BIG).build();
+            }
 
             tdb.setPreparedStatementRef(sqlString);
 
@@ -1073,7 +1139,8 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
                 }
                 return  Response.status(Response.Status.NOT_FOUND).entity("Image "+image_type+" of "+day+"-"+month+"-"+year+" not found ").build();
             }
-
+            System.out.println("J_GET_WHOLE_AAIGRID: closing connection");
+            tdb.closeConnection();
         }catch(Exception e){
             System.out.println("Error  : "+e.getMessage());
 
@@ -1084,12 +1151,6 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
             }
 
             return Response.status(500).entity(e.getMessage()).build();
-        }finally {
-            try{
-                tdb.closeConnection();
-            }catch (Exception ee){
-                System.out.println("Error "+ee.getMessage());
-            }
         }
 
         Response.ResponseBuilder responseBuilder = Response.ok(new ByteArrayInputStream(imgOut));
@@ -1097,100 +1158,16 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
         return responseBuilder.build();
     }
 
-    @GET
-    @Produces("image/png")
-    @Path("/j_get_whole_png")
-    public Response extractWholePng(@QueryParam("image_type") String image_type,
-                                       @QueryParam("year") String year,
-                                       @QueryParam("month") String month,
-                                       @QueryParam("day") String day,
-                                       @QueryParam("doy") String doy,
-                                       @QueryParam("streamed") String streamed){
-
-        byte[] imgOut=null;
-        TDBManager tdb=null;
-
-        Vector<InputStream> inputStreams = new Vector<InputStream>();
-        GregorianCalendar gc = new GregorianCalendar();
-
-        try {
-            gc.set(Calendar.YEAR, Integer.parseInt(year));
-            gc.set(Calendar.HOUR_OF_DAY,0);
-            gc.set(Calendar.MINUTE,0);
-            gc.set(Calendar.SECOND,0);
-            gc.set(Calendar.MILLISECOND,0);
-
-            if (doy == null){
-                if (day == null)
-                    day = "1";
-
-                System.out.println("Mese e Giorno : "+ month + " "+day);
-                gc.set(Calendar.MONTH, (Integer.parseInt(month)-1));
-                gc.set(Calendar.DAY_OF_MONTH, Integer.parseInt(day));
-            }else{
-
-                System.out.println("GG : "+doy);
-                gc.set(Calendar.DAY_OF_YEAR, Integer.parseInt(doy));
-            }
-
-
-
-
-            tdb = new TDBManager("jdbc/ssdb");
-            String sqlString=null;
-
-            sqlString="select ST_asPNG(ST_ColorMap(ST_Union(rast),1,'grayscale')) " +
-                    "from postgis."+image_type+" as a inner join postgis.acquisizioni as b using (id_acquisizione) "+
-                    "where dtime = ?";
-
-            tdb.setPreparedStatementRef(sqlString);
-            tdb.setParameter(DBManager.ParameterType.DATE,gc,1);
-            tdb.runPreparedQuery();
-
-            if (tdb.next()) {
-                imgOut = tdb.getPStmt().getResultSet().getBytes(1);
-                System.out.println("Image Readed length: "+imgOut.length);
-            }else{
-                try{
-                    tdb.closeConnection();
-                }catch (Exception ee){
-                    System.out.println("Error "+ee.getMessage());
-                }
-                return  Response.status(Response.Status.NOT_FOUND).entity("Image "+image_type+" of "+day+"-"+month+"-"+year+" not found ").build();
-            }
-
-        }catch(Exception e){
-            System.out.println("Error  : "+e.getMessage());
-
-            try{
-                tdb.closeConnection();
-            }catch (Exception ee){
-                System.out.println("Error "+ee.getMessage());
-            }
-
-            return Response.status(500).entity(e.getMessage()).build();
-        }finally {
-            try{
-                tdb.closeConnection();
-            }catch (Exception ee){
-                System.out.println("Error "+ee.getMessage());
-            }
-        }
-
-
-        if(streamed.matches("1")){
-            Response.ResponseBuilder responseBuilder = Response.ok(new ByteArrayInputStream(imgOut));
-
-            return responseBuilder.build();
-        }else{
-
-            Response.ResponseBuilder responseBuilder = Response.ok(imgOut);
-            responseBuilder.header("Content-Disposition", "attachment; filename=\""+image_type+"_"+gc.get(Calendar.YEAR)+"_"+gc.get(Calendar.DAY_OF_YEAR)+".png\"");
-
-            return responseBuilder.build();
-        }
-    }
-
+    /**
+     *
+     * @param image_type
+     * @param year
+     * @param doy
+     * @param polygon
+     * @param sridfrom
+     * @return
+     *         extracted image geotiff or errocode
+     */
     @GET
     @Produces("image/gtiff")
     @Path("/j_get_whole_gtiff/{image_type}/{year}/{doy}{polygon:(/polygon/.+?)?}{srid_from:(/srid_from/.+?)?}")
@@ -1209,16 +1186,11 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
 
 
 
-            tdb = new TDBManager("jdbc/ssdb");
             String sqlString=null;
 
 
             if(polygon.matches("") || polygon == null){
-                sqlString="select ST_asGDALRaster((select ST_Union(rast) " +
-                        "from postgis."+image_type+" as a inner join postgis.acquisizioni as b using (id_acquisizione) "+
-                        "where extract('year' from b.dtime) = "+year+" "+
-                        "and   extract('doy' from b.dtime) = "+doy +" "+
-                        "),'GTiff')" ;
+                Response.status(Response.Status.OK).entity(POLYGON_IS_MANDATORY).build();
             }else{
 
                 sqlString="select ST_asGDALRaster(ST_Clip(ST_Union(rast),1,ST_Transform(ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+"),"+DBSRID+"),true),'GTiff') " +
@@ -1228,7 +1200,21 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
 
             }
 
+            tdb = new TDBManager("jdbc/ssdb");
 
+
+            //checking area
+            Procedures thisProc = new Procedures(tdb);
+            double thisArea = thisProc.calcPolygonArea(polygon.split("/")[2],sridfrom.split("/")[2]);
+
+            if(thisArea > MAX_POLYGON_AREA){
+                try{
+                    tdb.closeConnection();
+                }catch (Exception ee){
+                    System.out.println("Error "+ee.getMessage());
+                }
+                return  Response.status(Response.Status.OK).entity(POLYGON_TOO_BIG).build();
+            }
 
             System.out.println("SQL : "+sqlString);
 
@@ -1247,7 +1233,8 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
                 }
                 return  Response.status(Response.Status.NOT_FOUND).entity("Image "+image_type+" of "+doy+"-"+year+" not found ").build();
             }
-
+            System.out.println("J_GET_WHOLE_GTIFF: closing connection");
+            tdb.closeConnection();
         }catch(Exception e){
             System.out.println("Error  : "+e.getMessage());
 
@@ -1258,12 +1245,6 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
             }
 
             return Response.status(500).entity(e.getMessage()).build();
-        }finally {
-            try{
-                tdb.closeConnection();
-            }catch (Exception ee){
-                System.out.println("Error "+ee.getMessage());
-            }
         }
 
 
@@ -1273,6 +1254,18 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
         return responseBuilder.build();
     }
 
+
+    /**
+     *
+     * @param image_type
+     * @param year
+     * @param month
+     * @param day
+     * @param polygon
+     * @param sridfrom
+     * @return
+     *          extracted image in png format or an error code
+     */
     @GET
     @Produces("image/gtiff")
     @Path("/j_get_whole_gtiff/{image_type}/{year}/{month}/{day}{polygon:(/polygon/.+?)?}{srid_from:(/srid_from/.+?)?}")
@@ -1293,56 +1286,42 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
             if (day == null)
                 day = "1";
 
-            tdb = new TDBManager("jdbc/ssdb");
+            if (Integer.parseInt(day) < 10 )
+                day = "0"+day;
+            if (Integer.parseInt(month) < 10 )
+                month = "0"+month;
             String sqlString=null;
 
 
             if(polygon.matches("") || polygon == null){
-           //     sqlString="with base as ( " +
-         //               "select rast from postgis." +image_type+" inner join " +
-         //               "postgis.acquisizioni using (id_acquisizione) " +
-         //               "where extract('year' from dtime) = "+year+" "+
-         //               "and   extract('month' from dtime) = "+month+" "+
-         //               "and   extract('day' from dtime) = "+day+" " +
-         //               "LIMIT 1) "+
-         //               "select ST_asGDALRaster(ST_Union(ST_Resample(rast, (select rast from base))),'GTiff') " +
-         //               "from postgis."+image_type+" inner join postgis.acquisizioni using (id_acquisizione) "+
-         //               "where extract('year' from dtime) = "+year+" "+
-         //               "and   extract('month' from dtime) = "+month+" "+
-         //               "and   extract('day' from dtime) = "+day;
 
-                  sqlString="select ST_asGDALRaster(ST_Union(rast),'GTiff') " +
-                        "from postgis."+image_type+" inner join postgis.acquisizioni using (id_acquisizione) "+
-                        "where extract('year' from dtime) = "+year+" "+
-                        "and   extract('month' from dtime) = "+month+" "+
-                        "and   extract('day' from dtime) = "+day;
+                Response.status(Response.Status.OK).entity(POLYGON_IS_MANDATORY).build();
+
             }else{
-             /*   sqlString="with base as ( " +
-                        "select rast from postgis." +image_type+" inner join " +
-                        "postgis.acquisizioni using (id_acquisizione) " +
-                        "where extract('year' from dtime) = "+year+" "+
-                        "and   extract('month' from dtime) = "+month+" "+
-                        "and   extract('day' from dtime) = "+day+" " +
-                        "LIMIT 1) "+
-                        "select ST_asGDALRaster(ST_Clip(ST_Union(ST_Resample(rast, (select rast from base))),1,ST_Transform(ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+"),"+DBSRID+"),true),'GTiff') " +
-                        "from postgis."+image_type+" inner join postgis.acquisizioni using (id_acquisizione) "+
-                        "where extract('year' from dtime) = "+year+" "+
-                        "and   extract('month' from dtime) = "+month+" "+
-                        "and   extract('day' from dtime) = "+day;
-*/
+
+                sqlString="select * from ST_asGDALRaster(extract_image('"+image_type+"','"+year+"-"+month+"-"+day+"'::timestamp," +
+                        "ST_Transform(ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+"),"+DBSRID+")),'GTiff') ";
 
 
+            }
 
-                sqlString="select ST_asGDALRaster(ST_Clip(ST_Union(rast),1,ST_Transform(ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+"),"+DBSRID+"),true),'GTiff') " +
-                        "from postgis."+image_type+" as a inner join postgis.acquisizioni as b using (id_acquisizione) "+
-                        "where extract('year' from b.dtime) = "+year+" "+
-                        "and   extract('month' from b.dtime) = "+month+" "+
-                        "and   extract('day' from b.dtime) = "+day;
+            tdb = new TDBManager("jdbc/ssdb");
+            //checking area
+              Procedures thisProc = new Procedures(tdb);
+            double thisArea = thisProc.calcPolygonArea(polygon.split("/")[2],sridfrom.split("/")[2]);
+
+            if(thisArea > MAX_POLYGON_AREA){
+                System.out.println("AREA: "+thisArea);
+                try{
+                    tdb.closeConnection();
+                }catch (Exception ee){
+                    System.out.println("Error "+ee.getMessage());
+                }
+                return  Response.status(Response.Status.OK).entity(POLYGON_TOO_BIG +" : "+thisArea).build();
             }
 
 
             System.out.println("SQL : "+sqlString);
-
             tdb.setPreparedStatementRef(sqlString);
 
             tdb.runPreparedQuery();
@@ -1358,7 +1337,8 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
                 }
                 return  Response.status(Response.Status.NOT_FOUND).entity("Image "+image_type+" of "+day+"-"+month+"-"+year+" not found ").build();
             }
-
+            System.out.println("J_GET_WHOLE_GTIFF: closing connection");
+            tdb.closeConnection();
         }catch(Exception e){
             System.out.println("Error  : "+e.getMessage());
 
@@ -1369,16 +1349,7 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
             }
 
             return Response.status(500).entity(e.getMessage()).build();
-        }finally {
-            try{
-                tdb.closeConnection();
-            }catch (Exception ee){
-                System.out.println("Error "+ee.getMessage());
-            }
         }
-
-
-
 
         Response.ResponseBuilder responseBuilder = Response.ok(imgOut);
         responseBuilder.header("Content-Disposition", "attachment; filename=\""+image_type+"_"+year+"_"+month+"_"+day+".tiff\"");
@@ -1388,7 +1359,7 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
     }
 
 
-
+/*
     @GET
     @Produces("image/gtiff")
     @Path("/j_get_whole_gtiff")
@@ -1486,7 +1457,7 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
             return responseBuilder.build();
         }
     }
-
+*/
     /**
      *
      * Calculate TCI image related to specific date composed by year and day of year otherwise it is possible pass year, month and day.
@@ -1942,18 +1913,18 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
         TDBManager tdb=null;
         String reclass_param, legend_param, rast_out;
         Vector<InputStream> inputStreams = new Vector<InputStream>();
-
+        boolean checkArea = false;
         try {
 
 
 
-            tdb = new TDBManager("jdbc/ssdb");
             String sqlString=null;
 
 
             if(image_type.matches("tci") || image_type.matches("vci")){
                 reclass_param = TCI_RECLASS;
                 legend_param  = TCI_LEGEND;
+                checkArea = true;  //polygon area will be checked
 
             }else if(image_type.substring(0,3).matches("spi")  ){
                 reclass_param = SPI_RECLASS;
@@ -1964,12 +1935,15 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
                 reclass_param = VHI_RECLASS;
                 legend_param  = VHI_LEGEND;
                 //      rast_out = "ST_Reclass(ST_Clip(ST_Union(rast),1,ST_Transform(ST_GeomFromText('"+the_geom+"',"+from_srid.split("/")[2]+"),"+DBSRID+"),true),1,'"+reclass_param+"','8BUI') ";
+                checkArea = true;  //polygon area will be checked
 
             }else{
 
                 legend_param  = "grayscale";
                 //    rast_out = "ST_Union(rast) ";
                 reclass_param ="";
+                checkArea = true;  //polygon area will be checked
+
             }
 
 
@@ -1994,13 +1968,33 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
                         ",false) ";
 
 
+            }else{
+                Response.status(Response.Status.OK).entity(POLYGON_IS_MANDATORY).build();
             }
 
 
 
+            tdb = new TDBManager("jdbc/ssdb");
+
+            System.out.println("J_GET_IMAGE: Checking area");
+
+            if(checkArea){
+                //checking area
+                Procedures thisProc = new Procedures(tdb);
+                double thisArea = thisProc.calcPolygonArea(polygon.split("/")[2],sridfrom.split("/")[2]);
+
+                if(thisArea > MAX_POLYGON_AREA){
+                    try{
+                        tdb.closeConnection();
+                    }catch (Exception ee){
+                        System.out.println("Error "+ee.getMessage());
+                    }
+                    return  Response.status(Response.Status.OK).entity(POLYGON_TOO_BIG).build();
+                }
+            }
 
 
-            System.out.println("SQL : "+sqlString);
+            System.out.println("J_GET_IMAGE : "+sqlString);
 
             tdb.setPreparedStatementRef(sqlString);
 
@@ -2017,7 +2011,8 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
                 }
                 return  Response.status(Response.Status.NOT_FOUND).entity("Image "+image_type+" of "+doy+"-"+year+" not found ").build();
             }
-
+            System.out.println("J_GET_IMAGE: closing connection");
+            tdb.closeConnection();
         }catch(Exception e){
             System.out.println("Error  : "+e.getMessage());
 
@@ -2028,12 +2023,6 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
             }
 
             return Response.status(500).entity(e.getMessage()).build();
-        }finally {
-            try{
-                tdb.closeConnection();
-            }catch (Exception ee){
-                System.out.println("Error "+ee.getMessage());
-            }
         }
 
 
@@ -2097,6 +2086,8 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
 
             if(!reclass_param.matches("")){
                 rast_out = "ST_Reclass("+rast_out+",1,'"+reclass_param+"', '8BUI')";
+            }else{
+                Response.status(Response.Status.OK).entity(POLYGON_IS_MANDATORY).build();
             }
 
           // rast_out="ST_ColorMap("+rast_out+",1,'"+legend_param+"','EXACT') ";

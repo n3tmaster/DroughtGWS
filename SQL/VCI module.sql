@@ -1961,18 +1961,14 @@ ALTER FUNCTION postgis.calculate_vci2(integer, integer)
 
 
 
+-- FUNCTION: postgis.calculate_vci2(integer, integer, geometry)
 
-
----
-
--- FUNCTION: postgis.calculate_vci2(integer, integer)
-
--- DROP FUNCTION postgis.calculate_vci2(integer, integer);
+-- DROP FUNCTION postgis.calculate_vci2(integer, integer, geometry);
 
 CREATE OR REPLACE FUNCTION postgis.calculate_vci2(
-    doy_in integer,
-    year_in integer,
-    poly_in geometry)
+	doy_in integer,
+	year_in integer,
+	poly_in geometry)
     RETURNS boolean
     LANGUAGE 'plpgsql'
 
@@ -1989,41 +1985,19 @@ DECLARE
     icount INT;
     return_rast minmaxrast;
     puppa INT;
-    imgtype_in INT;
+
     id_acquisizione_in INT;
 
 BEGIN
     RAISE NOTICE 'Process starts... %', current_timestamp;
-    select id_imgtype into imgtype_in
-    from   postgis.imgtypes
-    where  imgtype = 'NDVI';
 
-    IF EXISTS ( select id_acquisizione
-                from   postgis.acquisizioni inner join postgis.imgtypes using (id_imgtype)
-                where  imgtype = 'VCI'
-                  and    extract(doy from dtime) = doy_in
-                  and    extract(year from dtime) = year_in)  THEN
-
-        RAISE NOTICE 'Found';
-
-        select id_acquisizione into id_acquisizione_in
+       select id_acquisizione into id_acquisizione_in
         from   postgis.acquisizioni inner join postgis.imgtypes using (id_imgtype)
         where  imgtype = 'VCI'
           and    extract(doy from dtime) = doy_in
           and    extract(year from dtime) = year_in;
 
-
-    ELSE
-
-        RAISE NOTICE 'not found, create';
-        INSERT INTO postgis.acquisizioni (dtime, id_imgtype)
-        VALUES (to_timestamp(''||year_in||' '||doy_in||'', 'YYYY DDD'),(select id_imgtype from postgis.imgtypes where imgtype='VCI'))
-        RETURNING id_acquisizione INTO id_acquisizione_in;
-
-        RAISE NOTICE 'ids : %',id_acquisizione_in;
-
-
-    END IF;
+	RAISE NOTICE 'ids: %',id_acquisizione_in;
 
     RAISE NOTICE 'Get Last NDVI tiles';
     icount := 0;
@@ -2048,7 +2022,12 @@ BEGIN
                                          using (id_acquisizione)
             where extract(doy from dtime) = doy_in
               and   extract(year from dtime) < year_in
-              and   ST_ConvexHull(rast) = lst_i.ext;
+			  and   ST_Intersects(rast, lst_i.ext);
+
+			--and   ST_ConvexHull(rast) = lst_i.ext;
+
+            maxrast := ST_Clip(maxrast, lst_i.ext, true);
+			minrast := ST_Clip(minrast, lst_i.ext, true);
 
             -- RAISE NOTICE 'min: %, % max: %, %', ST_Width(minrast), ST_Height(minrast), ST_Width(maxrast), ST_Height(maxrast);
 
@@ -2056,7 +2035,7 @@ BEGIN
                                  'calculate_vci_raster(double precision[], int[], text[])'::regprocedure,
                                  '32BF', 'LAST', null, 0, 0, null);
 
-            RAISE NOTICE 'saving tci raster';
+            RAISE NOTICE 'saving vci raster';
 
             --	RAISE NOTICE 'ids %',id_acquisizione_in;
             --  RAISE NOTICE 'tci: %, %', ST_Width(tci), ST_Height(tci);
@@ -2073,6 +2052,8 @@ BEGIN
 END;
 $BODY$;
 
+ALTER FUNCTION postgis.calculate_vci2(integer, integer, geometry)
+    OWNER TO postgres;
 
 
 -- FUNCTION: postgis.calculate_vci2(integer, integer)
