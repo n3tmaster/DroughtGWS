@@ -850,10 +850,11 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
 
     @GET
-    @Path("/j_calculate_mc_vci/{nthread}/{year}/{doy}")
+    @Path("/j_calculate_mc_vci/{nthread}{year:(/year/.+?)?}{doy:(/doy/.+?)?}")
     public Response updateVCI2(@PathParam("nthread") int nthread,
-                               @PathParam("year") int year,
-                                @PathParam("doy") int doy){
+                               @PathParam("year") String year,
+                                @PathParam("doy") String doy
+                               ){
 
 
         System.out.println("VCI Multithread start");
@@ -861,16 +862,48 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
 
         MCProcedures mcp=null;
+        TDBManager tdb=null;
+        StringTokenizer st;
         int retCode = -1;
         try {
 
+            //checking for specific date
+            if(!year.matches("") && year != null &&
+                    !doy.matches("") && doy != null){
+
+                mcp = new MCProcedures("jdbc/ssdb");
 
 
+                retCode = mcp.perform_vci_calculus(nthread,Integer.parseInt(year.split("/")[2]),Integer.parseInt(doy.split("/")[2]));
 
-            mcp = new MCProcedures("jdbc/ssdb");
+
+            }else{
+                tdb= new TDBManager("jdbc/ssdb");
+                tdb.openConnection();
+                tdb.setPreparedStatementRef("select distinct mdoy, myear from postgis.model_startup " +
+                        "inner join postgis.imgtypes using (id_imgtype) " +
+                        "where imgtype = 'VCI'");
+                tdb.runPreparedQuery();
+                mcp = new MCProcedures("jdbc/ssdb");
+                while(tdb.next()){
+                    System.out.println("VCI Multithread - process - "+tdb.getInteger(1)+" - "+tdb.getInteger(2));
+                    retCode = mcp.perform_vci_calculus(nthread,tdb.getInteger(2),tdb.getInteger(1));
+                    if(retCode != 0) {
+                        mcp.shutdownExecutor();
+                        System.out.println("Shutdown complete");
+                    }
+                }
+                System.out.println("VCI MC - cleaning model_startup");
+                tdb.setPreparedStatementRef("delete from postgis.model_startup where id_imgtype = " +
+                        "(select id_imgtype from postgis.imgtypes where imgtype = 'VCI')");
+                tdb.performInsert();
+                System.out.println("VCI MC - closing connection");
+                tdb.closeConnection();
+
+                System.out.println("VCI Multithread  done.");
+            }
 
 
-            retCode = mcp.perform_vci_calculus(nthread,year,doy);
 
 
 
@@ -881,7 +914,7 @@ public class OrganizeRaster extends Application implements SWH4EConst {
             try{
 
                 mcp.closeConnection();
-
+                tdb.closeConnection();
             }catch (Exception ee){
                 System.out.println("Error ee "+ee.getMessage());
                 try{
@@ -926,25 +959,58 @@ public class OrganizeRaster extends Application implements SWH4EConst {
     }
 
     @GET
-    @Path("/j_calculate_mc_vhi/{nthread}/{year}/{doy}")
+    @Path("/j_calculate_mc_vhi/{nthread}{year:(/year/.+?)?}{doy:(/doy/.+?)?}")
     public Response updateVHI2(@PathParam("nthread") int nthread,
-                               @PathParam("year") int year,
-                               @PathParam("doy") int doy){
+                               @PathParam("year") String year,
+                               @PathParam("doy") String doy){
 
 
         System.out.println("VHI Multithread start");
 
 
         MCProcedures mcp=null;
+        TDBManager tdb=null;
         int retCode = -1;
         try {
 
 
+            if(!year.matches("") && year != null &&
+                    !doy.matches("") && doy != null){
+                System.out.println("VHI Multithread single date ");
+                mcp = new MCProcedures("jdbc/ssdb");
 
 
-            mcp = new MCProcedures("jdbc/ssdb");
+                retCode = mcp.perform_vhi_calculus(nthread,Integer.parseInt(year.split("/")[2]),Integer.parseInt(doy.split("/")[2]));
 
-            retCode = mcp.perform_vhi_calculus(nthread,year,doy);
+
+            }else{
+                tdb = new TDBManager("jdbc/ssdb");
+                tdb.openConnection();
+                tdb.setPreparedStatementRef("select distinct mdoy, myear from postgis.model_startup " +
+                        "inner join postgis.imgtypes using (id_imgtype) " +
+                        "where imgtype = 'VHI'");
+                tdb.runPreparedQuery();
+                mcp = new MCProcedures("jdbc/ssdb");
+                while(tdb.next()){
+                    System.out.println("VHI Multithread - process - "+tdb.getInteger(1)+" - "+tdb.getInteger(2));
+                    retCode = mcp.perform_vhi_calculus(nthread,tdb.getInteger(2),tdb.getInteger(1));
+                    if(retCode != 0) {
+                        mcp.shutdownExecutor();
+                        System.out.println("Shutdown complete");
+                    }
+                }
+
+                System.out.println("VHI MC - cleaning model_startup");
+                tdb.setPreparedStatementRef("delete from postgis.model_startup where id_imgtype = " +
+                        "(select id_imgtype from postgis.imgtypes where imgtype = 'VHI')");
+                tdb.performInsert();
+                System.out.println("VHI MC - closing connection");
+                tdb.closeConnection();
+
+                System.out.println("VHI Multithread  done.");
+            }
+
+
 
 
 
@@ -953,18 +1019,11 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
 
             try{
-
-
                 mcp.closeConnection();
+                tdb.closeConnection();
             }catch (Exception ee){
                 System.out.println("Error ee "+ee.getMessage());
-                try{
 
-
-                    mcp.closeConnection();
-                }catch (Exception eee){
-                    System.out.println("Error eee "+eee.getMessage());
-                }
             }
 
             return Response.status(500).entity("Error during import procedure!").build();
@@ -980,10 +1039,18 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
 
                 mcp.closeConnection();
+
             }catch (Exception ee){
                 System.out.println("Error "+ee.getMessage());
             }
+            try{
 
+
+                tdb.closeConnection();
+
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
             return Response.status(500).entity("Error during import procedure!").build();
 
         } finally{
@@ -1005,26 +1072,55 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
 
     @GET
-    @Path("/j_calculate_mc_evci/{nthread}/{year}/{doy}")
+    @Path("/j_calculate_mc_evci/{nthread}{year:(/year/.+?)?}{doy:(/doy/.+?)?}")
     public Response updateEVCI2(@PathParam("nthread") int nthread,
-                               @PathParam("year") int year,
-                               @PathParam("doy") int doy){
+                               @PathParam("year") String year,
+                               @PathParam("doy") String doy){
 
 
         System.out.println("E-VCI Multithread start");
 
 
         MCProcedures mcp=null;
+        TDBManager tdb = null;
         int retCode = -1;
         try {
 
 
 
+            if(!year.matches("") && year != null &&
+                    !doy.matches("") && doy != null){
+                System.out.println("E-VCI Multithread single date ");
+                mcp = new MCProcedures("jdbc/ssdb");
 
 
-            mcp = new MCProcedures("jdbc/ssdb");
+                retCode = mcp.perform_evci_calculus(nthread,Integer.parseInt(year.split("/")[2]),Integer.parseInt(doy.split("/")[2]));
 
-            retCode = mcp.perform_evci_calculus(nthread,year,doy);
+
+            }else{
+                tdb = new TDBManager("jdbc/ssdb");
+                tdb.openConnection();
+                tdb.setPreparedStatementRef("select distinct mdoy, myear from postgis.model_startup " +
+                        "inner join postgis.imgtypes using (id_imgtype) " +
+                        "where imgtype = 'EVCI'");
+                tdb.runPreparedQuery();
+                mcp = new MCProcedures("jdbc/ssdb");
+                while(tdb.next()){
+                    System.out.println("E-VCI Multithread - process - "+tdb.getInteger(1)+" - "+tdb.getInteger(2));
+                    retCode = mcp.perform_evci_calculus(nthread,tdb.getInteger(2),tdb.getInteger(1));
+                    if(retCode != 0) {
+                        mcp.shutdownExecutor();
+                        System.out.println("Shutdown complete");
+                    }
+                }
+                System.out.println("E-VCI MC - cleaning model_startup");
+                tdb.setPreparedStatementRef("delete from postgis.model_startup where id_imgtype = " +
+                        "(select id_imgtype from postgis.imgtypes where imgtype = 'EVCI')");
+                tdb.performInsert();
+                System.out.println("E-VCI MC - closing connection");
+                tdb.closeConnection();
+                System.out.println("E-VCI Multithread  done.");
+            }
 
 
 
@@ -1035,12 +1131,12 @@ public class OrganizeRaster extends Application implements SWH4EConst {
             try{
 
                 mcp.closeConnection();
-
+                tdb.closeConnection();
             }catch (Exception ee){
                 System.out.println("Error ee "+ee.getMessage());
                 try{
 
-
+                    tdb.closeConnection();
                     mcp.closeConnection();
                 }catch (Exception eee){
                     System.out.println("Error eee "+eee.getMessage());
@@ -1057,7 +1153,7 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
 
             try{
-
+                tdb.closeConnection();
                 mcp.closeConnection();
 
             }catch (Exception ee){
@@ -2501,7 +2597,7 @@ public class OrganizeRaster extends Application implements SWH4EConst {
      */
     @GET
     @Path("/j_update_evi2/{product}/{collection}/{tile_y}/{tile_x}/{skip_vci}/{skip_evci}/{nthreads}/{app_key}{year_in:(/year_in/.+?)?}{month_in:(/month_in/.+?)?}{day_in:(/day_in/.+?)?}{doy_in:(/doy_in/.+?)?}")
-    public Response updateEviNdvi2(@PathParam("product") String product,
+    public Response saupdateEviNdvi2(@PathParam("product") String product,
                                   @PathParam("collection") String collection,
                                    @PathParam("tile_y") String tile_y,
                                    @PathParam("tile_x") String tile_x,
@@ -2552,9 +2648,6 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
                 if(tdb.next()){
                     if(tdb.getInteger(7) == 1 && tdb.getInteger(5) < 16){
-
-
-
                         doy="1";
                         month="1";
                         day = "1";
@@ -2605,7 +2698,7 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
             nList = doc.getElementsByTagName("return");
 
-            if(nList.getLength()<1){
+            if(nList.item(0).getTextContent().toLowerCase().matches("no results")){
                 System.out.println("No result");
                 retCode = 0;
             }else {
@@ -2697,8 +2790,6 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
                     if(skip_vci.matches("1")) {
 
-
-
                         System.out.println("Calculating VCI..."+doy+"-"+year+" - N threads: "+nthreads);
 
                         mcp = new MCProcedures("jdbc/ssdb");
@@ -2723,10 +2814,47 @@ public class OrganizeRaster extends Application implements SWH4EConst {
                             retCode = 0;
                         }
 
-
-
-
                     }else{
+                        System.out.print("J_UPDATE_EVI2: save entry in model startup");
+                        sqlString = "select * from postgis.model_startup where id_imgtype = (select id_imgtype from postgis.imgtypes where imgtype = ?)" +
+                                " and mdoy = ? and myear = ?";
+
+
+
+                        tdb = new TDBManager("jdbc/ssdb");
+                        tdb.openConnection();
+                        tdb.setPreparedStatementRef(sqlString);
+                        tdb.setParameter(DBManager.ParameterType.STRING,"VCI",1);
+                        tdb.setParameter(DBManager.ParameterType.INT,doy,2);
+                        tdb.setParameter(DBManager.ParameterType.INT,year,3);
+                        tdb.runPreparedQuery();
+                        if(tdb.next()){
+                            System.out.println("model startup is already inserted");
+                        }else{
+                            sqlString = "insert into postgis.model_startup "+
+                                    "(id_imgtype, mdoy, myear) "+
+                                    "values "+
+                                    "((select id_imgtype from postgis.imgtypes where imgtype = ?),"+
+                                    "?,?)";
+                            tdb.setPreparedStatementRef(sqlString);
+                            tdb.setParameter(DBManager.ParameterType.STRING,"VCI",1);
+                            tdb.setParameter(DBManager.ParameterType.INT,doy,2);
+                            tdb.setParameter(DBManager.ParameterType.INT,year,3);
+                            tdb.performInsert();
+
+                            tdb.setParameter(DBManager.ParameterType.STRING,"EVCI",1);
+                            tdb.setParameter(DBManager.ParameterType.INT,doy,2);
+                            tdb.setParameter(DBManager.ParameterType.INT,year,3);
+                            tdb.performInsert();
+
+                            tdb.setParameter(DBManager.ParameterType.STRING,"VHI",1);
+                            tdb.setParameter(DBManager.ParameterType.INT,doy,2);
+                            tdb.setParameter(DBManager.ParameterType.INT,year,3);
+                            tdb.performInsert();
+                        }
+
+                        tdb.closeConnection();
+                        System.out.println("-- OK -- closing connection");
                         retCode = 0;
                     }
 

@@ -1,9 +1,13 @@
 package it.cnr.ibimet.dgws;
 
 
+import it.cnr.ibimet.dbutils.ErrorCode;
 import it.cnr.ibimet.dbutils.SWH4EConst;
 import it.cnr.ibimet.dbutils.TDBManager;
+import it.cnr.ibimet.dbutils.WSExceptions;
 import it.lr.libs.DBManager;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
 
 
 import javax.ws.rs.*;
@@ -32,23 +36,6 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
 
 
 
-    final static String MOBILE_STAT = "M";
-    final static String FIXED_STAT = "T";
-    final static String EDDY_STAT = "E";
-    final static String GEOM_COL = "ST_asKML(a.the_geom, 15) as tgeom,";
-
-
-
-    final static String COORD_COLS = "ST_X(ST_Transform(the_geom,4326)) as coordx,ST_Y(ST_Transform(the_geom,4326)) as coordy,";
-
-
-    final static String MOBILE_DATA_TABLE = "dati";
-    final static String FIXED_DATA_TABLE = "dati_stazioni_fisse";
-    final static String EDDY_DATA_TABLE = "dati_eddy";
-
-
-
-
 
     @GET
     @Path("/j_get_size")
@@ -57,21 +44,15 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
                                        @QueryParam("srid") String srid) {
         TDBManager tdb=null;
 
-        String bounds="",bounds_out="";
+        String bounds_out="";
 
         try {
-            String legend;
 
 
-            ByteArrayOutputStream is;
 
 
             tdb = new TDBManager("jdbc/ssdb");
-            String sqlString=null;
-
-
-
-            sqlString=" select ST_Width(ST_Union(rast)), ST_Height(ST_Union(rast)) " +
+            String sqlString=" select ST_Width(ST_Union(rast)), ST_Height(ST_Union(rast)) " +
                     "from "+tname+" " +
                     "where ST_Contains(ST_GeomFromText('"+ polygon+"',"+srid+"), " +
                     "ST_Polygon(rast))";
@@ -135,22 +116,17 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
                                        @PathParam("srid_from") String srid_from) {
         TDBManager tdb=null;
 
-        String bounds="",bounds_out="";
+        String bounds="";
 
         try {
-            String legend;
-
-
-            ByteArrayOutputStream is;
-
 
             tdb = new TDBManager("jdbc/ssdb");
-            String sqlString=null;
+            String sqlString;
 
 
 
             //Check for seasonal request
-            if(image_type.matches("crud") || image_type.matches("ecad")){
+            if(image_type.matches("cru") || image_type.matches("ecad")){
 
                 sqlString = "select ST_AsText(ST_ConvexHull(postgis.calculate_seasonal_forecast_spi3(" +
                         "ST_Transform(ST_GeomFromText('"+polygon.split("/")[2]+"',"+srid_from.split("/")[2]+"),"+DBSRID+"),"+year+","+doy+",'"+image_type+"')))";
@@ -231,18 +207,10 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
 
         try {
 
-            String legend;
-
-
-            ByteArrayOutputStream is;
 
 
             tdb = new TDBManager("jdbc/ssdb");
-            String sqlString=null;
-
-
-
-            sqlString=" select ST_AsPng(ST_ColorMap(ST_Union(rast),1,'greyscale','EXACT'), ARRAY['ZLEVEL=1']) " +
+            String sqlString=" select ST_AsPng(ST_ColorMap(ST_Union(rast),1,'greyscale','EXACT'), ARRAY['ZLEVEL=1']) " +
                     "from "+tname+" " +
                     "where ST_Intersects(ST_Transform(ST_GeomFromText('"+ polygon+"',"+srid+"),"+srid2+"), " +
                     "ST_Polygon(rast))";
@@ -314,18 +282,9 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
 
         try {
 
-            String legend;
-
-
-            ByteArrayOutputStream is;
-
 
             tdb = new TDBManager("jdbc/ssdb");
-            String sqlString=null;
-
-
-
-            sqlString=" select ST_AsGDALRaster(ST_Union(rast), 'GTiff') " +
+            String sqlString=" select ST_AsGDALRaster(ST_Union(rast), 'GTiff') " +
                     "from "+tname+" " +
                     "where ST_Contains(ST_GeomFromText('"+ polygon+"',"+srid+"), " +
                     "ST_Polygon(rast))";
@@ -386,181 +345,19 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
 
     }
 
-    @GET
-    @Produces("image/tiff")
-    @Path("/j_untiled_tiff")
-    public Response getUnTiledRaster(@QueryParam("table_name") String tname,
-                                     @QueryParam("ulx") String ulx,
-                                     @QueryParam("uly") String uly,
-                                     @QueryParam("llx") String llx,
-                                     @QueryParam("lly") String lly,
-                                     @QueryParam("srid") String srid,
-                                     @QueryParam("streamed") String streamed){
-        TDBManager tdb=null;
-        byte[] imgOut=null;
-
-        try {
-
-            String legend;
 
 
-            ByteArrayOutputStream is;
-
-
-            tdb = new TDBManager("jdbc/ssdb");
-            String sqlString=null;
-
-
-
-            sqlString=" select ST_AsGDALRaster(ST_Union(rast), 'GTiff') " +
-                    "from "+tname+" " +
-                    "where ST_Contains(ST_GeomFromText('POLYGON(("+ulx+" "+uly+","+llx+" "+uly+","+llx+" "+lly+","+ulx+" "+lly+","+ulx+" "+uly+"))',"+srid+"), " +
-                    "ST_Polygon(rast))";
-
-            tdb.setPreparedStatementRef(sqlString);
-
-
-            tdb.runPreparedQuery();
-
-            if (tdb.next()) {
-
-
-                imgOut = tdb.getPStmt().getResultSet().getBytes(1);
-
-
-                System.out.println("Image Readed length: "+imgOut.length);
-
-            }
-
-
-        }catch(Exception e){
-            System.out.println("Error  : "+e.getMessage());
-
-
-            try{
-                tdb.closeConnection();
-            }catch (Exception ee){
-                System.out.println("Error "+ee.getMessage());
-            }
-
-            return Response.status(500).entity(e.getMessage()).build();
-        }finally {
-            {
-                try{
-                    tdb.closeConnection();
-                }catch (Exception ee){
-                    System.out.println("Error "+ee.getMessage());
-                }
-
-            }
-        }
-
-
-        if(streamed.matches("1")){
-            Response.ResponseBuilder responseBuilder = Response.ok(new ByteArrayInputStream(imgOut));
-
-
-            return responseBuilder.build();
-        }else{
-            Response.ResponseBuilder responseBuilder = Response.ok((imgOut));
-            responseBuilder.header("Content-Disposition", "attachment; filename=\"MyImageFile.tiff\"");
-
-            return responseBuilder.build();
-        }
-    }
-
-    @GET
-    @Produces("image/tiff")
-    @Path("/j_merged_tiff")
-    public Response getTiledRaster(@QueryParam("table_name") String tname,
-                                   @QueryParam("ulx") String ulx,
-                                   @QueryParam("uly") String uly,
-                                   @QueryParam("llx") String llx,
-                                   @QueryParam("lly") String lly,
-                                   @QueryParam("streamed") String streamed){
-        TDBManager tdb=null;
-        byte[] imgOut=null;
-
-        try {
-
-            String legend;
-
-
-            ByteArrayOutputStream is;
-
-
-            tdb = new TDBManager("jdbc/ssdb");
-            String sqlString=null;
-
-
-
-            sqlString=" select ST_AsGDALRaster(ST_Union(rast), 'GTiff') " +
-                    "from "+tname+" " +
-                    "where ST_Contains(ST_GeomFromText('POLYGON(("+ulx+" "+uly+","+llx+" "+uly+","+llx+" "+lly+","+ulx+" "+lly+","+ulx+" "+uly+"))',4326), " +
-                    "ST_Polygon(rast))";
-
-            tdb.setPreparedStatementRef(sqlString);
-
-
-            tdb.runPreparedQuery();
-
-            if (tdb.next()) {
-
-
-                imgOut = tdb.getPStmt().getResultSet().getBytes(1);
-
-
-                System.out.println("Image Readed length: "+imgOut.length);
-
-            }
-
-            tdb.closeConnection();
-        }catch(Exception e){
-            System.out.println("Error  : "+e.getMessage());
-
-
-            try{
-                tdb.closeConnection();
-            }catch (Exception ee){
-                System.out.println("Error "+ee.getMessage());
-            }
-
-            return Response.status(500).entity(e.getMessage()).build();
-        }finally {
-            {
-                try{
-                    tdb.closeConnection();
-                }catch (Exception ee){
-                    System.out.println("Error "+ee.getMessage());
-                }
-
-            }
-        }
-
-
-        if(streamed.matches("1")){
-            Response.ResponseBuilder responseBuilder = Response.ok(new ByteArrayInputStream(imgOut));
-
-
-            return responseBuilder.build();
-        }else{
-            Response.ResponseBuilder responseBuilder = Response.ok((imgOut));
-            responseBuilder.header("Content-Disposition", "attachment; filename=\"MyImageFile.tiff\"");
-
-            return responseBuilder.build();
-        }
-    }
 
 
     /**
      * Function for image extraction from provided polygon
      *
-     * @param image_type
-     * @param year
-     * @param doy
-     * @param polygon
-     * @param sridfrom
-     * @param filename
+     * @param image_type Image type (is the table name)
+     * @param year year
+     * @param doy day of year
+     * @param polygon polygon for performing extraction
+     * @param sridfrom SRID of given polygon
+     * @param filename name file
      * @return
      *  Extracted image in png format or an error code: -1 Data not found
      *                                                  -2 Provided polygon is too big
@@ -569,8 +366,8 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
     @Produces("image/png")
     @Path("/j_get_whole_png/{image_type}/{year}/{doy}{polygon:(/polygon/.+?)?}{srid_from:(/srid_from/.+?)?}{filename:(/filename/.+?)?}")
     public Response extractWholePngPathDOY(@PathParam("image_type") String image_type,
-                                    @PathParam("year") String year,
-                                    @PathParam("doy") String doy,
+                                    @PathParam("year") int year,
+                                    @PathParam("doy") int doy,
                                            @PathParam("polygon") String polygon,
                                            @PathParam("srid_from") String sridfrom,
                                            @PathParam("filename") String filename
@@ -578,119 +375,47 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
 
         byte[] imgOut=null;
         TDBManager tdb=null;
-        boolean checkArea = false;
 
         try {
+            Calendar calendar = Calendar.getInstance();
 
-            String sqlString=null;
+            calendar.set(Calendar.YEAR, year);
+            calendar.set(Calendar.DAY_OF_YEAR, doy);
 
+            System.out.println("J_GET_WHOLE_PNG: start procedure");
 
+            tdb = new TDBManager("jdbc/ssdb");
+            Procedures thisProc = new Procedures(tdb);
 
-            String reclass_param="", legend_param="", rast_out="";
-
-
-
-            if(image_type.matches("tci") ) {
-                reclass_param = TCI_RECLASS;
-                legend_param = TCI_LEGEND;
-                if (polygon.matches("") || polygon == null) {
-                    Response.status(Response.Status.OK).entity(POLYGON_IS_MANDATORY).build();
-                }else{
-                    rast_out = "ST_Reclass(ST_Clip(ST_Union(rast),1," +
-                            "ST_Transform(" +
-                            "ST_GeomFromText('" + polygon.split("/")[2] + "'," + sridfrom.split("/")[2] + ")," + DBSRID + "),-999.0,true),1,'" + reclass_param + "','8BUI',-999.0) ";
-                    checkArea = true;  //polygon area will be checked
-                }
-            }else if(image_type.matches("vci") || image_type.matches("evci") ){
-                reclass_param = VCI_RECLASS;
-                legend_param  = TCI_LEGEND;
-                if(polygon.matches("") || polygon == null) {
-                    Response.status(Response.Status.OK).entity(POLYGON_IS_MANDATORY).build();
-                }else {
-                    //calculate polygon area
-                    rast_out = "ST_Reclass(ST_Clip(ST_Union(rast),1," +
-                            "ST_Transform(" +
-                            "ST_GeomFromText('" + polygon.split("/")[2] + "'," + sridfrom.split("/")[2] + ")," + DBSRID + "),-999.0,true),1,'" + reclass_param + "','8BUI',-999.0) ";
-                    checkArea = true;  //polygon area will be checked
-                }
-            }else if(image_type.substring(0,3).matches("spi")  ){
-                reclass_param = SPI_RECLASS;
-                legend_param  = SPI_LEGEND;
-                if(polygon.matches("") || polygon == null)
-                    Response.status(Response.Status.OK).entity(POLYGON_IS_MANDATORY).build();
-                else
-                    rast_out = "ST_Reclass(ST_Clip(ST_Union(rast),1,ST_Transform(ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+"),"+DBSRID+"),-999.0,true),1,'"+reclass_param+"','8BUI',-999.0) ";
-
-            }else if(image_type.matches("vhi") || image_type.matches("evhi")) {
-                reclass_param = VHI_RECLASS;
-                legend_param = VHI_LEGEND;
-                if (polygon.matches("") || polygon == null){
-                    Response.status(Response.Status.OK).entity(POLYGON_IS_MANDATORY).build();
-                }else{
-                    rast_out = "ST_Reclass(ST_Clip(ST_Union(rast),1,ST_Transform(ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+"),"+DBSRID+"),-999.0,true),1,'"+reclass_param+"','8BUI',-999.0) ";
-                    checkArea = true;  //polygon area will be checked
-                }
-            }else{
-
-                Response.status(Response.Status.OK).entity(WRONG_IMAGE_TYPE).build();
-
-            }
+            imgOut = thisProc.extractClassifiedImage(image_type,""+calendar.get(Calendar.YEAR),
+                    ""+(calendar.get(Calendar.MONTH)+1),""+calendar.get(Calendar.DAY_OF_MONTH),
+                    ""+calendar.get(Calendar.DAY_OF_YEAR),
+                    "ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+")",""+DBSRID);
 
 
 
-            if(image_type.matches("cru") || image_type.matches("ecad")){
-                sqlString = "select ST_asPNG((ST_ColorMap(postgis.calculate_seasonal_forecast_spi3(" +
-                        "ST_Transform(ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+"),"+DBSRID+"),"+year+","+doy+",'"+image_type+"'),1,'"+
-                        CRUD_LEGEND+"','EXACT'))" +
-                        ")";
-            }else{
-
-                sqlString="select ST_asPNG(ST_ColorMap("+rast_out+",1,'"+legend_param+"','EXACT'),ARRAY[1,2,3,4], ARRAY['ZLEVEL=3']) " +
-                        "from postgis."+image_type+" as a inner join postgis.acquisizioni as b using (id_acquisizione) "+
-                        "where extract('year' from b.dtime) = "+year+" "+
-                        "and   extract('doy' from b.dtime) = "+doy+" "+
-                        "and   ST_Intersects(rast,ST_Transform(ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+"),"+DBSRID+"))";
-
-            }
-
-
-
-
-
-            System.out.println("J_GET_WHOLE_PNG: Checking area");
-            if(checkArea){
-                //checking area
-                Procedures thisProc = new Procedures(tdb);
-                double thisArea = thisProc.calcPolygonArea(polygon.split("/")[2],sridfrom.split("/")[2]);
-
-                if(thisArea > MAX_POLYGON_AREA){
-                    try{
-                        tdb.closeConnection();
-                    }catch (Exception ee){
-                        System.out.println("Error "+ee.getMessage());
-                    }
-                    return  Response.status(Response.Status.OK).entity(POLYGON_TOO_BIG).build();
-                }
-            }
-
-            System.out.println("J_GET_WHOLE_PNG:" +sqlString);
-
-            tdb.setPreparedStatementRef(sqlString);
-            tdb.runPreparedQuery();
-
-            if (tdb.next()) {
-                imgOut = tdb.getPStmt().getResultSet().getBytes(1);
-                System.out.println("Image Readed length: "+imgOut.length);
-            }else{
-                try{
-                    tdb.closeConnection();
-                }catch (Exception ee){
-                    System.out.println("Error "+ee.getMessage());
-                }
-                return  Response.status(Response.Status.NOT_FOUND).entity("Image "+image_type+" of "+doy+"-"+year+" not found ").build();
-            }
             System.out.println("J_GET_WHOLE_PNG: closing connection");
             tdb.closeConnection();
+
+            if(imgOut == null){
+                return  Response.status(Response.Status.NOT_FOUND).entity("Image "+image_type+" of "+doy+"-"+year+" not found ").build();
+            }
+        }catch(WSExceptions wse){
+            System.out.println("J_GET_WHOLE_PNG error: "+wse.getMessage());
+
+            switch(wse.getCode().getErrCode()){
+                case ErrorCode.POLYGON_TOO_BIG:
+                    return  Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_TOO_BIG_STR).build();
+                case ErrorCode.POLYGON_IS_MANDATORY:
+                    return  Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_IS_MANDATORY_STR).build();
+            }
+
+            try{
+                System.out.println("J_GET_WHOLE_PNG: closing connection");
+                tdb.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
 
         }catch(Exception e){
             System.out.println("Error  : "+e.getMessage());
@@ -732,7 +457,6 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
         byte[] imgOut=null;
         TDBManager tdb=null;
 
-        Vector<InputStream> inputStreams = new Vector<InputStream>();
 
         try {
 
@@ -741,7 +465,7 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
 
 
             System.out.println("ci sono ");
-            String reclass_param="", legend_param="", rast_out="", the_geom="", polygon_out="";
+            String reclass_param="", legend_param="", rast_out="", polygon_out="";
 
 
 
@@ -850,110 +574,56 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
         byte[] imgOut=null;
         TDBManager tdb=null;
 
-        boolean checkArea = false;
 
         try {
-
             if (day == null)
                 day = "1";
+            Calendar calendar = Calendar.getInstance();
 
-           String sqlString=null;
+            calendar.set(Calendar.YEAR, Integer.getInteger(year));
+            calendar.set(Calendar.DAY_OF_MONTH, Integer.getInteger(day));
+            calendar.set(Calendar.MONTH, Integer.getInteger(month));
 
 
-            String reclass_param="", legend_param="", rast_out="";
 
-
-            if(image_type.matches("tci") ) {
-                reclass_param = TCI_RECLASS;
-                legend_param = TCI_LEGEND;
-                if (polygon.matches("") || polygon == null){
-                    Response.status(Response.Status.OK).entity(POLYGON_IS_MANDATORY).build();
-                }else{
-                    rast_out = "ST_Reclass(ST_Clip(ST_Union(rast),1," +
-                            "ST_Transform(" +
-                            "ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+"),"+DBSRID+"),-999.0,true),1,'"+reclass_param+"','8BUI',-999.0) ";
-                    checkArea = true;  //polygon area will be checked
-                }
-            }else if(image_type.matches("vci") || image_type.matches("evci") ){
-                reclass_param = VCI_RECLASS;
-                legend_param  = TCI_LEGEND;
-                if(polygon.matches("") || polygon == null) {
-                    Response.status(Response.Status.OK).entity(POLYGON_IS_MANDATORY).build();
-                }else{
-                    rast_out = "ST_Reclass(ST_Clip(ST_Union(rast),1," +
-                            "ST_Transform(" +
-                            "ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+"),"+DBSRID+"),-999.0,true),1,'"+reclass_param+"','8BUI',-999.0) ";
-                    checkArea = true;  //polygon area will be checked
-                }
-            }else if(image_type.substring(0,3).matches("spi") ){
-                reclass_param = SPI_RECLASS;
-                legend_param  = SPI_LEGEND;
-                if(polygon.matches("") || polygon == null)
-                    Response.status(Response.Status.OK).entity(POLYGON_IS_MANDATORY).build();
-                else
-                    rast_out = "ST_Reclass(ST_Clip(ST_Union(rast),1,ST_Transform(ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+"),"+DBSRID+"),true),1,'"+reclass_param+"','8BUI') ";
-
-            }else if(image_type.matches("vhi")|| image_type.matches("evhi")){
-                reclass_param = VHI_RECLASS;
-                legend_param  = VHI_LEGEND;
-                if(polygon.matches("") || polygon == null) {
-                    Response.status(Response.Status.OK).entity(POLYGON_IS_MANDATORY).build();
-                }else{
-                    rast_out = "ST_Reclass(ST_Clip(ST_Union(rast),1,ST_Transform(ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+"),"+DBSRID+"),true),1,'"+reclass_param+"','8BUI') ";
-                    checkArea = true;  //polygon area will be checked
-                }
-            }else{
-                Response.status(Response.Status.OK).entity(WRONG_IMAGE_TYPE).build();
-
-            }
+            System.out.println("J_GET_WHOLE_PNG: start procedure");
 
             tdb = new TDBManager("jdbc/ssdb");
+            Procedures thisProc = new Procedures(tdb);
 
-            sqlString="select ST_asPNG(ST_ColorMap("+rast_out+",1,'"+legend_param+"','EXACT')) " +
-                    "from postgis."+image_type+" as a inner join postgis.acquisizioni as b using (id_acquisizione) "+
-                    "where extract('year' from b.dtime) = "+year+" "+
-                    "and   extract('month' from b.dtime) = "+month+" "+
-                    "and   extract('day' from b.dtime) = "+day;
+            imgOut = thisProc.extractClassifiedImage(image_type,""+calendar.get(Calendar.YEAR),
+                    ""+calendar.get(Calendar.MONTH),
+                    ""+calendar.get(Calendar.DAY_OF_MONTH),
+                    ""+calendar.get(Calendar.DAY_OF_YEAR),
+                    "ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+")",""+DBSRID);
 
 
 
-            System.out.println("J_GET_WHOLE_PNG: Checking area");
-            if(checkArea){
-                //checking area
-                Procedures thisProc = new Procedures(tdb);
-                double thisArea = thisProc.calcPolygonArea(polygon.split("/")[2],sridfrom.split("/")[2]);
-
-                if(thisArea > MAX_POLYGON_AREA){
-                    try{
-                        tdb.closeConnection();
-                    }catch (Exception ee){
-                        System.out.println("Error "+ee.getMessage());
-                    }
-                    return  Response.status(Response.Status.OK).entity(POLYGON_TOO_BIG).build();
-                }
-            }
-
-            System.out.println("J_GET_WHOLE_PNG:" +sqlString);
-
-            tdb.setPreparedStatementRef(sqlString);
-
-            tdb.runPreparedQuery();
-
-            if (tdb.next()) {
-                imgOut = tdb.getPStmt().getResultSet().getBytes(1);
-                System.out.println("Image Readed length: "+imgOut.length);
-            }else{
-                try{
-                    tdb.closeConnection();
-                }catch (Exception ee){
-                    System.out.println("Error "+ee.getMessage());
-                }
-                return  Response.status(Response.Status.NOT_FOUND).entity("Image "+image_type+" of "+day+"-"+month+"-"+year+" not found ").build();
-            }
             System.out.println("J_GET_WHOLE_PNG: closing connection");
             tdb.closeConnection();
+
+            if(imgOut == null){
+                return  Response.status(Response.Status.NOT_FOUND).entity("Image "+image_type+" of "+day+"-"+month+"-"+year+" not found ").build();
+            }
+        }catch(WSExceptions wse){
+            System.out.println("J_GET_WHOLE_PNG error: "+wse.getMessage());
+
+            switch(wse.getCode().getErrCode()){
+                case ErrorCode.POLYGON_TOO_BIG:
+                    return  Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_TOO_BIG_STR).build();
+                case ErrorCode.POLYGON_IS_MANDATORY:
+                    return  Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_IS_MANDATORY_STR).build();
+            }
+
+            try{
+                System.out.println("J_GET_WHOLE_PNG: closing connection");
+                tdb.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
         }catch(Exception e){
-            System.out.println("Error  : "+e.getMessage());
+            System.out.println("J_GET_WHOLE_PNG Error  : "+e.getMessage());
 
             try{
                 tdb.closeConnection();
@@ -963,21 +633,16 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
 
             return Response.status(500).entity(e.getMessage()).build();
         }
-
-
-
         Response.ResponseBuilder responseBuilder = Response.ok(new ByteArrayInputStream(imgOut));
-
         return responseBuilder.build();
-
     }
 
 
     /**
      * Get image as AAIGrid
-     * @param image_type
-     * @param year
-     * @param doy
+     * @param image_type aaa
+     * @param year aaa
+     * @param doy aaa
      * @return
      */
     @GET
@@ -1073,7 +738,7 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
      * @param year
      * @param month
      * @param day
-     * @return
+     * @return image
      */
     @GET
     @Produces(MediaType.TEXT_PLAIN)
@@ -1172,8 +837,8 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
     @Produces("image/gtiff")
     @Path("/j_get_whole_gtiff/{image_type}/{year}/{doy}{polygon:(/polygon/.+?)?}{srid_from:(/srid_from/.+?)?}")
     public Response extractWholeTiffDOY(@PathParam("image_type") String image_type,
-                                     @PathParam("year") String year,
-                                     @PathParam("doy") String doy,
+                                     @PathParam("year") int year,
+                                     @PathParam("doy") int doy,
                                         @PathParam("polygon") String polygon,
                                         @PathParam("srid_from") String sridfrom){
 
@@ -1183,58 +848,53 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
         Vector<InputStream> inputStreams = new Vector<InputStream>();
 
         try {
+            System.out.println("J_GET_WHOLE_GTIFF DOY V: start procedure");
+
+            Calendar calendar = Calendar.getInstance();
+
+            calendar.set(Calendar.YEAR, year);
+            calendar.set(Calendar.DAY_OF_YEAR, doy);
 
 
 
-            String sqlString=null;
-
-
-            if(polygon.matches("") || polygon == null){
-                Response.status(Response.Status.OK).entity(POLYGON_IS_MANDATORY).build();
-            }else{
-
-                sqlString="select ST_asGDALRaster(ST_Clip(ST_Union(rast),1,ST_Transform(ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+"),"+DBSRID+"),true),'GTiff') " +
-                        "from postgis."+image_type+" as a inner join postgis.acquisizioni as b using (id_acquisizione) "+
-                        "where extract('year' from b.dtime) = "+year+" "+
-                        "and   extract('doy' from b.dtime) = "+doy;
-
-            }
 
             tdb = new TDBManager("jdbc/ssdb");
-
-
-            //checking area
             Procedures thisProc = new Procedures(tdb);
-            double thisArea = thisProc.calcPolygonArea(polygon.split("/")[2],sridfrom.split("/")[2]);
 
-            if(thisArea > MAX_POLYGON_AREA){
-                try{
-                    tdb.closeConnection();
-                }catch (Exception ee){
-                    System.out.println("Error "+ee.getMessage());
-                }
-                return  Response.status(Response.Status.OK).entity(POLYGON_TOO_BIG).build();
-            }
+            imgOut = thisProc.extractImageTiff(image_type,""+calendar.get(Calendar.YEAR),
+                    ""+(calendar.get(Calendar.MONTH)+1),""+calendar.get(Calendar.DAY_OF_MONTH),
+                    "ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+")",
+                    ""+DBSRID);
 
-            System.out.println("SQL : "+sqlString);
 
-            tdb.setPreparedStatementRef(sqlString);
 
-            tdb.runPreparedQuery();
-
-            if (tdb.next()) {
-                imgOut = tdb.getPStmt().getResultSet().getBytes(1);
-                System.out.println("Image Readed length: "+imgOut.length);
-            }else{
-                try{
-                    tdb.closeConnection();
-                }catch (Exception ee){
-                    System.out.println("Error "+ee.getMessage());
-                }
-                return  Response.status(Response.Status.NOT_FOUND).entity("Image "+image_type+" of "+doy+"-"+year+" not found ").build();
-            }
             System.out.println("J_GET_WHOLE_GTIFF: closing connection");
             tdb.closeConnection();
+
+            if(imgOut == null){
+                return  Response.status(Response.Status.NOT_FOUND).entity("Image "+image_type+" of "+calendar.get(Calendar.DAY_OF_YEAR)+"-"+calendar.get(Calendar.YEAR)+" not found ").build();
+            }
+
+
+
+
+        }catch(WSExceptions wse){
+            System.out.println("J_GET_WHOLE_GTIFF error: "+wse.getMessage());
+
+            switch(wse.getCode().getErrCode()){
+                case ErrorCode.POLYGON_TOO_BIG:
+                    return  Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_TOO_BIG_STR).build();
+                case ErrorCode.POLYGON_IS_MANDATORY:
+                    return  Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_IS_MANDATORY_STR).build();
+            }
+
+            try{
+                System.out.println("J_GET_WHOLE_GTIFF: closing connection");
+                tdb.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
         }catch(Exception e){
             System.out.println("Error  : "+e.getMessage());
 
@@ -1255,6 +915,711 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
     }
 
 
+    @POST
+    @Consumes(MediaType.TEXT_PLAIN)
+    @Produces("image/gtiff")
+    @Path("/j_get_whole_gtiff/{image_type}/{year}/{month}/{day}/{sridfrom}")
+    public Response extractWholeTiffDMYPost(@PathParam("image_type") String image_type,
+                                            @PathParam("year") String year,
+                                            @PathParam("month") String month,
+                                            @PathParam("day") String day,
+                                            @PathParam("sridfrom") String sridfrom,
+                                            String polygon){
+
+        byte[] imgOut=null;
+        TDBManager tdb=null;
+
+        Vector<InputStream> inputStreams = new Vector<InputStream>();
+
+        try {
+
+            if (day == null)
+                day = "1";
+
+            if (Integer.parseInt(day) < 10 )
+                day = "0"+day;
+            if (Integer.parseInt(month) < 10 )
+                month = "0"+month;
+            String sqlString=null;
+
+
+            System.out.println("J_GET_WHOLE_GTIFF: start procedure");
+
+
+            if(polygon.trim().matches("")){
+                Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_IS_MANDATORY).build();
+            }
+
+
+            tdb = new TDBManager("jdbc/ssdb");
+            Procedures thisProc = new Procedures(tdb);
+
+            imgOut = thisProc.extractImageTiff(image_type,year,month,day,
+                    "ST_GeomFromText('"+polygon+"',"+sridfrom+")",""+DBSRID);
+
+
+
+            System.out.println("J_GET_WHOLE_GTIFF: closing connection");
+            tdb.closeConnection();
+
+            if(imgOut == null){
+                return  Response.status(Response.Status.NOT_FOUND).entity("Image "+image_type+" of "+day+"-"+month+"-"+year+" not found ").build();
+            }
+        }catch(WSExceptions wse){
+            System.out.println("J_GET_WHOLE_GTIFF error: "+wse.getMessage());
+
+            switch(wse.getCode().getErrCode()){
+                case ErrorCode.POLYGON_TOO_BIG:
+                    return  Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_TOO_BIG_STR).build();
+                case ErrorCode.POLYGON_IS_MANDATORY:
+                    return  Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_IS_MANDATORY_STR).build();
+            }
+
+            try{
+                System.out.println("J_GET_WHOLE_GTIFF: closing connection");
+                tdb.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+        }catch(Exception e){
+            System.out.println("J_GET_WHOLE_GTIFF Error  : "+e.getMessage());
+
+            try{
+                System.out.println("J_GET_WHOLE_GTIFF: closing connection");
+
+                tdb.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }
+
+        Response.ResponseBuilder responseBuilder = Response.ok(imgOut);
+        responseBuilder.header("Content-Disposition", "attachment; filename=\""+image_type+"_"+year+"_"+month+"_"+day+".tiff\"");
+
+        return responseBuilder.build();
+
+    }
+
+
+    @POST
+    @Consumes(MediaType.TEXT_PLAIN)
+    @Produces("image/png")
+    @Path("/j_get_whole_png/{image_type}/{year}/{month}/{day}/{sridfrom}")
+    public Response extractWholePngDMYPost(@PathParam("image_type") String image_type,
+                                            @PathParam("year") String year,
+                                            @PathParam("month") String month,
+                                            @PathParam("day") String day,
+                                            @PathParam("sridfrom") String sridfrom,
+                                            String polygon){
+
+        byte[] imgOut=null;
+        TDBManager tdb=null;
+
+        try {
+
+            if (day == null)
+                day = "1";
+
+            Calendar calendar = Calendar.getInstance();
+
+            calendar.set(Calendar.YEAR, Integer.getInteger(year));
+            calendar.set(Calendar.DAY_OF_MONTH, Integer.getInteger(day));
+            calendar.set(Calendar.MONTH, Integer.getInteger(month));
+
+
+            String sqlString=null;
+
+
+            System.out.println("J_GET_WHOLE_PNG: start procedure");
+
+
+            if(polygon.trim().matches("")){
+                Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_IS_MANDATORY).build();
+            }
+
+
+            tdb = new TDBManager("jdbc/ssdb");
+            Procedures thisProc = new Procedures(tdb);
+
+            imgOut = thisProc.extractClassifiedImage(image_type,""+calendar.get(Calendar.YEAR),
+                    ""+calendar.get(Calendar.MONTH),
+                    ""+calendar.get(Calendar.DAY_OF_MONTH),
+                    ""+calendar.get(Calendar.DAY_OF_YEAR),
+                    "ST_GeomFromText('"+polygon+"',"+sridfrom+")",""+DBSRID);
+
+
+
+            System.out.println("J_GET_WHOLE_PNG: closing connection");
+            tdb.closeConnection();
+
+            if(imgOut == null){
+                return  Response.status(Response.Status.NOT_FOUND).entity("Image "+image_type+" of "+day+"-"+month+"-"+year+" not found ").build();
+            }
+        }catch(WSExceptions wse){
+            System.out.println("J_GET_WHOLE_PNG error: "+wse.getMessage());
+
+            switch(wse.getCode().getErrCode()){
+                case ErrorCode.POLYGON_TOO_BIG:
+                    return  Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_TOO_BIG_STR).build();
+                case ErrorCode.POLYGON_IS_MANDATORY:
+                    return  Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_IS_MANDATORY_STR).build();
+            }
+
+            try{
+                System.out.println("J_GET_WHOLE_PNG: closing connection");
+                tdb.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+        }catch(Exception e){
+            System.out.println("J_GET_WHOLE_PNG Error  : "+e.getMessage());
+
+            try{
+                System.out.println("J_GET_WHOLE_PNG: closing connection");
+
+                tdb.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }
+
+        Response.ResponseBuilder responseBuilder = Response.ok(imgOut);
+        responseBuilder.header("Content-Disposition", "attachment; filename=\""+image_type+"_"+year+"_"+month+"_"+day+".png\"");
+
+        return responseBuilder.build();
+
+    }
+
+    @POST
+    @Consumes(MediaType.TEXT_PLAIN)
+    @Produces("image/gtiff")
+    @Path("/j_get_whole_gtiff/{image_type}/{year}/{doy}/{sridfrom}")
+    public Response extractWholeTiffDMYPost(@PathParam("image_type") String image_type,
+                                            @PathParam("year") int year,
+                                            @PathParam("doy") int doy,
+                                            @PathParam("sridfrom") String sridfrom,
+                                            String polygon){
+
+        byte[] imgOut=null;
+        TDBManager tdb=null;
+
+
+        try {
+
+            Calendar calendar = Calendar.getInstance();
+
+            calendar.set(Calendar.YEAR, year);
+            calendar.set(Calendar.DAY_OF_YEAR, doy);
+
+
+            System.out.println("J_GET_WHOLE_GTIFF: start procedure");
+
+
+            if(polygon.trim().matches("")){
+                Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_IS_MANDATORY).build();
+            }
+
+
+            tdb = new TDBManager("jdbc/ssdb");
+            Procedures thisProc = new Procedures(tdb);
+
+            imgOut = thisProc.extractImageTiff(image_type,""+calendar.get(Calendar.YEAR),
+                    ""+(calendar.get(Calendar.MONTH)+1),""+calendar.get(Calendar.DAY_OF_MONTH),
+                    "ST_GeomFromText('"+polygon+"',"+sridfrom+")",""+DBSRID);
+
+
+
+            System.out.println("J_GET_WHOLE_GTIFF: closing connection");
+            tdb.closeConnection();
+
+            if(imgOut == null){
+                return  Response.status(Response.Status.NOT_FOUND).entity("Image "+image_type+" of "+calendar.get(Calendar.DAY_OF_MONTH)+"-"+year+" not found ").build();
+            }
+        }catch(WSExceptions wse){
+            System.out.println("J_GET_WHOLE_GTIFF error: "+wse.getMessage());
+
+            switch(wse.getCode().getErrCode()){
+                case ErrorCode.POLYGON_TOO_BIG:
+                    return  Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_TOO_BIG_STR).build();
+                case ErrorCode.POLYGON_IS_MANDATORY:
+                    return  Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_IS_MANDATORY_STR).build();
+            }
+
+            try{
+                System.out.println("J_GET_WHOLE_GTIFF: closing connection");
+                tdb.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+        }catch(Exception e){
+            System.out.println("J_GET_WHOLE_GTIFF Error  : "+e.getMessage());
+
+            try{
+                System.out.println("J_GET_WHOLE_GTIFF: closing connection");
+
+                tdb.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }
+
+        Response.ResponseBuilder responseBuilder = Response.ok(imgOut);
+        responseBuilder.header("Content-Disposition", "attachment; filename=\""+image_type+"_"+year+"_"+doy+".tiff\"");
+
+        return responseBuilder.build();
+
+    }
+
+    @POST
+    @Consumes(MediaType.TEXT_PLAIN)
+    @Produces("image/png")
+    @Path("/j_get_whole_png/{image_type}/{year}/{doy}/{sridfrom}")
+    public Response extractWholePngDoyPost(@PathParam("image_type") String image_type,
+                                            @PathParam("year") int year,
+                                            @PathParam("doy") int doy,
+                                            @PathParam("sridfrom") String sridfrom,
+                                            String polygon){
+
+        byte[] imgOut=null;
+        TDBManager tdb=null;
+
+
+        try {
+
+            Calendar calendar = Calendar.getInstance();
+
+            calendar.set(Calendar.YEAR, year);
+            calendar.set(Calendar.DAY_OF_YEAR, doy);
+
+
+            System.out.println("J_GET_WHOLE_PNG: start procedure");
+
+
+            if(polygon.trim().matches("")){
+                Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_IS_MANDATORY).build();
+            }
+
+
+            tdb = new TDBManager("jdbc/ssdb");
+            Procedures thisProc = new Procedures(tdb);
+
+            imgOut = thisProc.extractClassifiedImage(image_type,""+calendar.get(Calendar.YEAR),
+                    ""+(calendar.get(Calendar.MONTH)+1),
+                    ""+calendar.get(Calendar.DAY_OF_MONTH),
+                    ""+calendar.get(Calendar.DAY_OF_YEAR),
+                    "ST_GeomFromText('"+polygon+"',"+sridfrom+")",""+DBSRID);
+
+
+
+            System.out.println("J_GET_WHOLE_PNG: closing connection");
+            tdb.closeConnection();
+
+            if(imgOut == null){
+                return  Response.status(Response.Status.NOT_FOUND).entity("Image "+image_type+" of "+calendar.get(Calendar.DAY_OF_MONTH)+"-"+year+" not found ").build();
+            }
+        }catch(WSExceptions wse){
+            System.out.println("J_GET_WHOLE_PNG error: "+wse.getMessage());
+
+            switch(wse.getCode().getErrCode()){
+                case ErrorCode.POLYGON_TOO_BIG:
+                    return  Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_TOO_BIG_STR).build();
+                case ErrorCode.POLYGON_IS_MANDATORY:
+                    return  Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_IS_MANDATORY_STR).build();
+            }
+
+            try{
+                System.out.println("J_GET_WHOLE_PNG: closing connection");
+                tdb.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+        }catch(Exception e){
+            System.out.println("J_GET_WHOLE_PNG Error  : "+e.getMessage());
+
+            try{
+                System.out.println("J_GET_WHOLE_PNG: closing connection");
+
+                tdb.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }
+
+        Response.ResponseBuilder responseBuilder = Response.ok(imgOut);
+        responseBuilder.header("Content-Disposition", "attachment; filename=\""+image_type+"_"+year+"_"+doy+".png\"");
+
+        return responseBuilder.build();
+
+    }
+
+
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces("image/gtiff")
+    @Path("/j_get_whole_gtiff/{image_type}/{year}/{month}/{day}")
+    public Response extractWholeTiffDMYPost(@PathParam("image_type") String image_type,
+                                        @PathParam("year") String year,
+                                        @PathParam("month") String month,
+                                        @PathParam("day") String day,
+                                        String polygon){
+
+        byte[] imgOut=null;
+        TDBManager tdb=null;
+
+        Vector<InputStream> inputStreams = new Vector<InputStream>();
+
+        try {
+
+            if (day == null)
+                day = "1";
+
+            if (Integer.parseInt(day) < 10 )
+                day = "0"+day;
+            if (Integer.parseInt(month) < 10 )
+                month = "0"+month;
+            String sqlString=null;
+
+            JSONParser parser = new JSONParser();
+
+            System.out.println("J_GET_WHOLE_GTIFF: start procedure");
+
+            JSONObject jsonObject = (JSONObject) parser.parse(polygon.trim());
+
+            if(jsonObject.toJSONString().trim().matches("")){
+                Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_IS_MANDATORY).build();
+            }
+
+
+            tdb = new TDBManager("jdbc/ssdb");
+            Procedures thisProc = new Procedures(tdb);
+
+            imgOut = thisProc.extractImageTiff(image_type,year,month,day,
+                    "ST_GeomFromGeoJSON('"+ jsonObject.get("geometry").toString()+"')",""+DBSRID);
+
+
+
+            System.out.println("J_GET_WHOLE_GTIFF: closing connection");
+            tdb.closeConnection();
+
+            if(imgOut == null){
+                return  Response.status(Response.Status.NOT_FOUND).entity("Image "+image_type+" of "+day+"-"+month+"-"+year+" not found ").build();
+            }
+        }catch(WSExceptions wse){
+            System.out.println("J_GET_WHOLE_GTIFF error: "+wse.getMessage());
+
+            switch(wse.getCode().getErrCode()){
+                case ErrorCode.POLYGON_TOO_BIG:
+                    return  Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_TOO_BIG_STR).build();
+                case ErrorCode.POLYGON_IS_MANDATORY:
+                    return  Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_IS_MANDATORY_STR).build();
+            }
+
+            try{
+                System.out.println("J_GET_WHOLE_GTIFF: closing connection");
+                tdb.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+        }catch(Exception e){
+            System.out.println("J_GET_WHOLE_GTIFF Error  : "+e.getMessage());
+
+            try{
+                System.out.println("J_GET_WHOLE_GTIFF: closing connection");
+
+                tdb.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }
+
+        Response.ResponseBuilder responseBuilder = Response.ok(imgOut);
+        responseBuilder.header("Content-Disposition", "attachment; filename=\""+image_type+"_"+year+"_"+month+"_"+day+".tiff\"");
+
+        return responseBuilder.build();
+
+    }
+
+
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces("image/png")
+    @Path("/j_get_whole_png/{image_type}/{year}/{month}/{day}")
+    public Response extractWholePngJsonDMYPost(@PathParam("image_type") String image_type,
+                                            @PathParam("year") String year,
+                                            @PathParam("month") String month,
+                                            @PathParam("day") String day,
+                                            String polygon){
+
+        byte[] imgOut=null;
+        TDBManager tdb=null;
+
+        Vector<InputStream> inputStreams = new Vector<InputStream>();
+
+        try {
+
+            if (day == null)
+                day = "1";
+            Calendar calendar = Calendar.getInstance();
+
+            calendar.set(Calendar.YEAR, Integer.getInteger(year));
+            calendar.set(Calendar.DAY_OF_MONTH, Integer.getInteger(day));
+            calendar.set(Calendar.MONTH, Integer.getInteger(month));
+
+
+            String sqlString=null;
+
+            JSONParser parser = new JSONParser();
+
+            System.out.println("J_GET_WHOLE_PNG: start procedure");
+
+            JSONObject jsonObject = (JSONObject) parser.parse(polygon.trim());
+
+            if(jsonObject.toJSONString().trim().matches("")){
+                Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_IS_MANDATORY_STR).build();
+            }
+
+
+            tdb = new TDBManager("jdbc/ssdb");
+            Procedures thisProc = new Procedures(tdb);
+
+            imgOut = thisProc.extractClassifiedImage(image_type,""+calendar.get(Calendar.YEAR),
+                    ""+calendar.get(Calendar.MONTH),
+                    ""+calendar.get(Calendar.DAY_OF_MONTH),
+                    ""+calendar.get(Calendar.DAY_OF_YEAR),
+                    "ST_GeomFromGeoJSON('"+ jsonObject.get("geometry").toString()+"')",""+DBSRID);
+
+
+
+            System.out.println("J_GET_WHOLE_PNG: closing connection");
+            tdb.closeConnection();
+
+            if(imgOut == null){
+                return  Response.status(Response.Status.NOT_FOUND).entity("Image "+image_type+" of "+day+"-"+month+"-"+year+" not found ").build();
+            }
+        }catch(WSExceptions wse){
+            System.out.println("J_GET_WHOLE_PNG error: "+wse.getMessage());
+
+            switch(wse.getCode().getErrCode()){
+                case ErrorCode.POLYGON_TOO_BIG:
+                    return  Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_TOO_BIG_STR).build();
+                case ErrorCode.POLYGON_IS_MANDATORY:
+                    return  Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_IS_MANDATORY_STR).build();
+            }
+
+            try{
+                System.out.println("J_GET_WHOLE_PNG: closing connection");
+                tdb.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+        }catch(Exception e){
+            System.out.println("J_GET_WHOLE_PNG Error  : "+e.getMessage());
+
+            try{
+                System.out.println("J_GET_WHOLE_PNG: closing connection");
+
+                tdb.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }
+
+        Response.ResponseBuilder responseBuilder = Response.ok(imgOut);
+        responseBuilder.header("Content-Disposition", "attachment; filename=\""+image_type+"_"+year+"_"+month+"_"+day+".png\"");
+
+        return responseBuilder.build();
+
+    }
+
+
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces("image/gtiff")
+    @Path("/j_get_whole_gtiff/{image_type}/{year}/{doy}")
+    public Response extractWholeTiffDMYPost(@PathParam("image_type") String image_type,
+                                            @PathParam("year") int year,
+                                            @PathParam("doy") int doy,
+                                            String polygon){
+
+        byte[] imgOut=null;
+        TDBManager tdb=null;
+
+        Vector<InputStream> inputStreams = new Vector<InputStream>();
+
+        try {
+            Calendar calendar = Calendar.getInstance();
+
+            calendar.set(Calendar.YEAR, year);
+            calendar.set(Calendar.DAY_OF_YEAR, doy);
+
+
+
+            JSONParser parser = new JSONParser();
+
+            System.out.println("J_GET_WHOLE_GTIFF: start procedure");
+
+            JSONObject jsonObject = (JSONObject) parser.parse(polygon.trim());
+
+            if(jsonObject.toJSONString().trim().matches("")){
+                Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_IS_MANDATORY).build();
+            }
+
+
+            tdb = new TDBManager("jdbc/ssdb");
+            Procedures thisProc = new Procedures(tdb);
+
+            imgOut = thisProc.extractImageTiff(image_type,""+calendar.get(Calendar.YEAR),
+                    ""+(calendar.get(Calendar.MONTH)+1),""+calendar.get(Calendar.DAY_OF_MONTH),
+                    "ST_GeomFromGeoJSON('"+ jsonObject.get("geometry").toString()+"')",""+DBSRID);
+
+
+
+            System.out.println("J_GET_WHOLE_GTIFF: closing connection");
+            tdb.closeConnection();
+
+            if(imgOut == null){
+                return  Response.status(Response.Status.NOT_FOUND).entity("Image "+image_type+" of "+doy+"-"+year+" not found ").build();
+            }
+        }catch(WSExceptions wse){
+            System.out.println("J_GET_WHOLE_GTIFF error: "+wse.getMessage());
+
+            switch(wse.getCode().getErrCode()){
+                case ErrorCode.POLYGON_TOO_BIG:
+                    return  Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_TOO_BIG_STR).build();
+                case ErrorCode.POLYGON_IS_MANDATORY:
+                    return  Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_IS_MANDATORY_STR).build();
+            }
+
+            try{
+                System.out.println("J_GET_WHOLE_GTIFF: closing connection");
+                tdb.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+        }catch(Exception e){
+            System.out.println("J_GET_WHOLE_GTIFF Error  : "+e.getMessage());
+
+            try{
+                System.out.println("J_GET_WHOLE_GTIFF: closing connection");
+
+                tdb.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }
+
+        Response.ResponseBuilder responseBuilder = Response.ok(imgOut);
+        responseBuilder.header("Content-Disposition", "attachment; filename=\""+image_type+"_"+year+"_"+doy+".tiff\"");
+
+        return responseBuilder.build();
+
+    }
+
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces("image/png")
+    @Path("/j_get_whole_png/{image_type}/{year}/{doy}")
+    public Response extractWholePngJsonDPost(@PathParam("image_type") String image_type,
+                                            @PathParam("year") int year,
+                                            @PathParam("doy") int doy,
+                                            String polygon){
+
+        byte[] imgOut=null;
+        TDBManager tdb=null;
+
+        try {
+            Calendar calendar = Calendar.getInstance();
+
+            calendar.set(Calendar.YEAR, year);
+            calendar.set(Calendar.DAY_OF_YEAR, doy);
+
+
+
+            JSONParser parser = new JSONParser();
+
+            System.out.println("J_GET_WHOLE_PNG: start procedure");
+
+            JSONObject jsonObject = (JSONObject) parser.parse(polygon.trim());
+
+            if(jsonObject.toJSONString().trim().matches("")){
+                Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_IS_MANDATORY).build();
+            }
+
+
+            tdb = new TDBManager("jdbc/ssdb");
+            Procedures thisProc = new Procedures(tdb);
+
+            imgOut = thisProc.extractClassifiedImage(image_type,""+calendar.get(Calendar.YEAR),
+                    ""+(calendar.get(Calendar.MONTH)+1),""+calendar.get(Calendar.DAY_OF_MONTH),
+                    ""+calendar.get(Calendar.DAY_OF_YEAR),
+                    "ST_GeomFromGeoJSON('"+ jsonObject.get("geometry").toString()+"')",""+DBSRID);
+
+
+
+            System.out.println("J_GET_WHOLE_PNG: closing connection");
+            tdb.closeConnection();
+
+            if(imgOut == null){
+                return  Response.status(Response.Status.NOT_FOUND).entity("Image "+image_type+" of "+doy+"-"+year+" not found ").build();
+            }
+        }catch(WSExceptions wse){
+            System.out.println("J_GET_WHOLE_PNG error: "+wse.getMessage());
+
+            switch(wse.getCode().getErrCode()){
+                case ErrorCode.POLYGON_TOO_BIG:
+                    return  Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_TOO_BIG_STR).build();
+                case ErrorCode.POLYGON_IS_MANDATORY:
+                    return  Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_IS_MANDATORY_STR).build();
+            }
+
+            try{
+                System.out.println("J_GET_WHOLE_PNG: closing connection");
+                tdb.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+        }catch(Exception e){
+            System.out.println("J_GET_WHOLE_PNG Error  : "+e.getMessage());
+
+            try{
+                System.out.println("J_GET_WHOLE_PNG: closing connection");
+
+                tdb.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }
+
+        Response.ResponseBuilder responseBuilder = Response.ok(imgOut);
+        responseBuilder.header("Content-Disposition", "attachment; filename=\""+image_type+"_"+year+"_"+doy+".png\"");
+
+        return responseBuilder.build();
+
+    }
     /**
      *
      * @param image_type
@@ -1290,55 +1655,43 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
                 day = "0"+day;
             if (Integer.parseInt(month) < 10 )
                 month = "0"+month;
-            String sqlString=null;
+
+            System.out.println("J_GET_WHOLE_GTIFF: start procedure");
 
 
-            if(polygon.matches("") || polygon == null){
-
-                Response.status(Response.Status.OK).entity(POLYGON_IS_MANDATORY).build();
-
-            }else{
-
-                sqlString="select * from ST_asGDALRaster(extract_image('"+image_type+"','"+year+"-"+month+"-"+day+"'::timestamp," +
-                        "ST_Transform(ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+"),"+DBSRID+")),'GTiff') ";
-
-
-            }
 
             tdb = new TDBManager("jdbc/ssdb");
-            //checking area
-              Procedures thisProc = new Procedures(tdb);
-            double thisArea = thisProc.calcPolygonArea(polygon.split("/")[2],sridfrom.split("/")[2]);
+            Procedures thisProc = new Procedures(tdb);
 
-            if(thisArea > MAX_POLYGON_AREA){
-                System.out.println("AREA: "+thisArea);
-                try{
-                    tdb.closeConnection();
-                }catch (Exception ee){
-                    System.out.println("Error "+ee.getMessage());
-                }
-                return  Response.status(Response.Status.OK).entity(POLYGON_TOO_BIG +" : "+thisArea).build();
-            }
+            imgOut = thisProc.extractImageTiff(image_type,year,month,day,
+                    "ST_GeomFromText('"+polygon.split("/")[2]+"',"+sridfrom.split("/")[2]+")",""+DBSRID);
 
 
-            System.out.println("SQL : "+sqlString);
-            tdb.setPreparedStatementRef(sqlString);
 
-            tdb.runPreparedQuery();
-
-            if (tdb.next()) {
-                imgOut = tdb.getPStmt().getResultSet().getBytes(1);
-                System.out.println("Image Readed length: "+imgOut.length);
-            }else{
-                try{
-                    tdb.closeConnection();
-                }catch (Exception ee){
-                    System.out.println("Error "+ee.getMessage());
-                }
-                return  Response.status(Response.Status.NOT_FOUND).entity("Image "+image_type+" of "+day+"-"+month+"-"+year+" not found ").build();
-            }
             System.out.println("J_GET_WHOLE_GTIFF: closing connection");
             tdb.closeConnection();
+
+            if(imgOut == null){
+                return  Response.status(Response.Status.NOT_FOUND).entity("Image "+image_type+" of "+day+"-"+month+"-"+year+" not found ").build();
+            }
+
+        }catch(WSExceptions wse){
+            System.out.println("J_GET_WHOLE_GTIFF error: "+wse.getMessage());
+
+            switch(wse.getCode().getErrCode()){
+                case ErrorCode.POLYGON_TOO_BIG:
+                    return  Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_TOO_BIG_STR).build();
+                case ErrorCode.POLYGON_IS_MANDATORY:
+                    return  Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_IS_MANDATORY_STR).build();
+            }
+
+            try{
+                System.out.println("J_GET_WHOLE_GTIFF: closing connection");
+                tdb.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
         }catch(Exception e){
             System.out.println("Error  : "+e.getMessage());
 

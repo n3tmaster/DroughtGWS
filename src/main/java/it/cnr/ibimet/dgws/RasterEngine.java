@@ -57,6 +57,8 @@ public class RasterEngine  implements SWH4EConst {
 
     }
 
+
+
     public static long run_bric_evci(String name,
                                     String polyin,
                                     double x_start, double y_start,
@@ -120,9 +122,6 @@ public class RasterEngine  implements SWH4EConst {
 
         try {
             tdb = new TDBManager("jdbc/ssdb");
-            // System.out.println(name + "select * from postgis.calculate_vci2(" +
-            //         doy +","+year+","+
-            //         "ST_GeomFromText('"+polyin+"',4326))");
             System.out.println(threadName+" start with "+polyin);
             tdb.setPreparedStatementRef("select * from postgis.calculate_vhi2(" +
                     doy +","+year+","+

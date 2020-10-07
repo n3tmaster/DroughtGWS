@@ -1,6 +1,7 @@
 package it.cnr.ibimet.dgws;
 
 
+import it.cnr.ibimet.dbutils.ErrorCode;
 import it.cnr.ibimet.dbutils.SWH4EConst;
 import it.cnr.ibimet.dbutils.TDBManager;
 import it.lr.libs.DBManager;
@@ -8,6 +9,7 @@ import it.lr.libs.DBManager;
 
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
 
 
 import javax.ws.rs.*;
@@ -907,6 +909,229 @@ public class Calculate  extends Application implements SWH4EConst {
         return responseBuilder.build();
     }
 
+
+    /**
+     * calculateSeries - POST version, uses GeoJSON format for given polygon
+     *
+     * @param image_type
+     * @param polygon
+     * @return
+     */
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Path("/series/{image_type}")
+    public Response calculateSeries(@PathParam("image_type") String image_type,
+                                    String polygon){
+
+
+
+        String retData="";
+        try {
+
+
+            JSONParser parser = new JSONParser();
+
+            System.out.println("SERIES - POST - JSON: start procedure");
+
+            JSONObject jsonObject = (JSONObject) parser.parse(polygon.trim());
+
+            if(jsonObject.toJSONString().trim().matches("")){
+                Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_IS_MANDATORY_STR).build();
+            }
+
+
+            String sqlString=null;
+
+
+
+
+            System.out.println("Call calculate stat series");
+            sqlString = "select * from postgis.calculate_stat_series('"+
+                    image_type+"', ST_GeomFromJSON('"+jsonObject.get("geometry").toString()+"'))";
+
+
+
+
+
+            retData = runStatCalc(sqlString);
+        }catch(Exception e){
+            System.out.println("SERIES - POST - JSON: "+e.getMessage());
+
+
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }
+
+
+        Response.ResponseBuilder responseBuilder = Response.ok(retData);
+
+        return responseBuilder.build();
+    }
+
+    /**
+     * calculateSeries - POST version, uses GeoJSON format for given polygon
+     *
+     * @param image_type
+     * @param polygon
+     * @return
+     */
+    @POST
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.TEXT_PLAIN)
+    @Path("/series/{image_type}")
+    public Response calculateSeriesCSV(@PathParam("image_type") String image_type,
+                                    String polygon){
+
+
+
+        String retData="";
+        try {
+
+
+            JSONParser parser = new JSONParser();
+
+            System.out.println("SERIES-CSV - POST - JSON: start procedure");
+
+            JSONObject jsonObject = (JSONObject) parser.parse(polygon.trim());
+
+            if(jsonObject.toJSONString().trim().matches("")){
+                Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_IS_MANDATORY_STR).build();
+            }
+
+
+            String sqlString=null;
+
+
+
+
+            System.out.println("Call calculate stat series");
+            sqlString = "select * from postgis.calculate_stat_series('"+
+                    image_type+"', ST_GeomFromJSON('"+jsonObject.get("geometry").toString()+"'))";
+
+
+
+
+
+            retData = runStatCalcCSV(sqlString);
+        }catch(Exception e){
+            System.out.println("SERIES-CSV - POST - JSON: "+e.getMessage());
+
+
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }
+
+
+        Response.ResponseBuilder responseBuilder = Response.ok(retData);
+
+        return responseBuilder.build();
+    }
+
+    /**
+     * calculateSeries - POST version, uses WKT format for given polygon
+     *
+     * @param image_type
+     * @param polygon
+     * @return
+     */
+    @POST
+    @Consumes(MediaType.TEXT_PLAIN)
+    @Produces(MediaType.APPLICATION_JSON)
+    @Path("/series/{image_type}/{srid_from}")
+    public Response calculateSeries(@PathParam("image_type") String image_type,
+                                    @PathParam("srid_from") String srid_from,
+                                    String polygon){
+
+
+
+        String retData="";
+        try {
+
+
+
+
+            String sqlString=null;
+
+            System.out.println("SERIES - POST - WKT: start procedure");
+
+
+
+            System.out.println("Call calculate stat series");
+            sqlString = "select * from postgis.calculate_stat_series('"+
+                    image_type+"', ST_GeomFromText('"+polygon+"',"+srid_from+"))";
+
+
+
+
+
+            retData = runStatCalc(sqlString);
+        }catch(Exception e){
+            System.out.println("SERIES - POST - WKT: "+e.getMessage());
+
+
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }
+
+
+        Response.ResponseBuilder responseBuilder = Response.ok(retData);
+
+        return responseBuilder.build();
+    }
+
+
+    /**
+     * calculateSeries - POST version, uses WKT format for given polygon
+     *
+     * @param image_type
+     * @param polygon
+     * @return
+     */
+    @POST
+    @Consumes(MediaType.TEXT_PLAIN)
+    @Produces(MediaType.TEXT_PLAIN)
+    @Path("/series/{image_type}/{srid_from}")
+    public Response calculateSeriesCSV(@PathParam("image_type") String image_type,
+                                    @PathParam("srid_from") String srid_from,
+                                    String polygon){
+
+
+
+        String retData="";
+        try {
+
+
+
+
+            String sqlString=null;
+
+            System.out.println("SERIES-CSV - POST - WKT: start procedure");
+
+
+
+            System.out.println("Call calculate stat series");
+            sqlString = "select * from postgis.calculate_stat_series('"+
+                    image_type+"', ST_GeomFromText('"+polygon+"',"+srid_from+"))";
+
+
+
+
+
+            retData = runStatCalcCSV(sqlString);
+        }catch(Exception e){
+            System.out.println("SERIES-CSV - POST - WKT: "+e.getMessage());
+
+
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }
+
+
+        Response.ResponseBuilder responseBuilder = Response.ok(retData);
+
+        return responseBuilder.build();
+    }
 
     @GET
     @Produces(MediaType.TEXT_PLAIN)

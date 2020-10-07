@@ -20,7 +20,7 @@ public interface SWH4EConst {
 
 
     String CHIRPS_GET_PRELIMINARY_RAIN = "ftp://ftp.chg.ucsb.edu/pub/org/chg/products/CHIRPS-2.0/prelim/global_daily/netcdf/p05/chirps-v2.0.";
-
+    String NO_RESULTS = "no results";
     //costanti per la multilingua
     String LINGUA_IT = "it";
     String LINGUA_EN = "en";

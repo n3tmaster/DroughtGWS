@@ -139,22 +139,37 @@ $BODY$
   LANGUAGE plpgsql VOLATILE
 
 
--- calculate vhi
 
-CREATE OR REPLACE FUNCTION postgis.calculate_vhi_raster(value double precision[][][], pos integer[][], VARIADIC userargs text[])
-	RETURNS double precision
-	AS $$
-	BEGIN
+--calculate vhi raster
+-- function for MapAlgebra callback. it calculates VHI value for every pixels
+CREATE OR REPLACE FUNCTION postgis.calculate_vhi_raster(
+	value double precision[],
+	pos integer[],
+	VARIADIC userargs text[])
+    RETURNS double precision
+    LANGUAGE 'plpgsql'
+
+    COST 100
+    IMMUTABLE
+AS $BODY$
+DECLARE
+
+	tci_mean double precision;
+
+BEGIN
+
+ 		--calculate tci mean
+		tci_mean := (value[2][1][1] + value[3][1][1]) / 2.0;
 
 
-        -- (VCI * 0.5) + (TCI * 0.5)
-
-	    RETURN ((value[1][1][1] * 0.5) + (value[2][1][1] * 0.5));
-
+		-- (VCI * 0.5) + (TCI * 0.5)
+	    RETURN ((value[1][1][1] * 0.5) + (tci_mean * 0.5));
 
 	END;
-	$$ LANGUAGE 'plpgsql' IMMUTABLE;
+	$BODY$;
 
+ALTER FUNCTION postgis.calculate_vhi_raster(double precision[], integer[], text[])
+    OWNER TO postgres;
 
 
 -- main function for generating e-vci rasters
@@ -555,9 +570,15 @@ BEGIN
 END;
 $BODY$;
 
--- FUNCTION: postgis.calculate_vhi2(integer, integer, geometry)
 
--- DROP FUNCTION postgis.calculate_vhi2(integer, integer, geometry);
+--calculate vhi2
+-- calculate VHI
+-- INPUT - doy_in doy
+--         year_in year
+--         poly_in polygon for calculations
+--
+-- RETURN
+--   TRUE if is ok
 
 CREATE OR REPLACE FUNCTION postgis.calculate_vhi2(
 	doy_in integer,
@@ -572,7 +593,8 @@ AS $BODY$  DECLARE
 
     tci RASTER;
     tci2 RASTER;
-
+	tci_mean RASTER;
+    this_vci RASTER;
     vhi RASTER;
 
     id_acquisizione_in INT;
@@ -599,34 +621,48 @@ BEGIN
                    and   ST_Intersects(rast, poly_in)
         LOOP
 
-			RAISE NOTICE 'Calculte TCI mean';
+			RAISE NOTICE 'Extract TCI';
 
-            WITH base_mean AS (select rast
-            from postgis.tci inner join postgis.acquisizioni
-                                        using (id_acquisizione)
+            select ST_Union(rast)
+			into tci
+            from postgis.tci inner join postgis.acquisizioni using (id_acquisizione)
             where extract(doy from dtime) = doy_in
               and   extract(year from dtime) = year_in
-              and   ST_Intersects(rast, lst_i.ext)
-			UNION
-			select rast
+              and   ST_Intersects(rast, lst_i.ext);
+	--	    tci := ST_Clip(tci,lst_i.ext, true);
+
+			RAISE NOTICE 'Extract TCI2';
+
+			select ST_Union(rast)
+			into tci2
             from postgis.tci inner join postgis.acquisizioni
                                         using (id_acquisizione)
             where extract(doy from dtime) = (doy_in + 8)
               and   extract(year from dtime) = year_in
-              and   ST_Intersects(rast, lst_i.ext))
-            SELECT ST_Union(rast,'MEAN') INTO tci2 FROM base_mean;
+              and   ST_Intersects(rast, lst_i.ext);
 
 
+	--		tci2 := ST_Clip(tci2,lst_i.ext, true);
 
 
-            RAISE NOTICE 'Clipping and Resampling TCI';
-            tci2 := ST_Resample(ST_Clip(tci2, lst_i.ext, true), lst_i.vci_rast);
+            RAISE NOTICE 'Clipping and Resampling TCI mean';
+			tci := ST_Resample(tci, lst_i.vci_rast);
+            tci2 := ST_Resample(tci2, lst_i.vci_rast);
+
+
+            tci := ST_Clip(tci,lst_i.ext, true);
+			tci2 := ST_Clip(tci2,lst_i.ext, true);
+
+	--		 RAISE NOTICE 'tci 1 and tci 2 %',ST_SameAlignment(tci,tci2);
+	--		RAISE NOTICE 'tci 1 and vci %',ST_SameAlignment(tci,lst_i.vci_rast);
+	--		RAISE NOTICE 'tci 2 and vci %',ST_SameAlignment(tci2,lst_i.vci_rast);
 
             RAISE NOTICE 'Calculate VHI raster...';
-            vhi := ST_MapAlgebra(ARRAY[ROW(lst_i.vci_rast,1), ROW(tci2,1)]::rastbandarg[],
+            vhi := ST_MapAlgebra(ARRAY[ROW(lst_i.vci_rast,1), ROW(tci2,1), ROW(tci,1)]::rastbandarg[],
                                  'postgis.calculate_vhi_raster(double precision[], int[], text[])'::regprocedure,
-                                 '32BF', 'CUSTOM',lst_i.vci_rast, 0, 0, null);
+                                 '32BF', 'LAST',null, 0, 0, null);
 
+RAISE NOTICE 'Save VHI raster...';
             INSERT INTO postgis.vhi (id_acquisizione, rast)
             VALUES
             (id_acquisizione_in, ST_Tile(vhi,240,240));
