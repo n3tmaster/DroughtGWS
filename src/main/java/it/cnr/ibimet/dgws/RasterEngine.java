@@ -57,6 +57,52 @@ public class RasterEngine  implements SWH4EConst {
 
     }
 
+    public static long run_bric_tci(String name,
+                                    String polyin,
+                                    double x_start, double y_start,
+                                    double x_end, double y_end,
+                                    int year, int doy) {
+
+        String threadName;
+        TDBManager tdb=null;
+        threadName = name;
+
+
+        try {
+            tdb = new TDBManager("jdbc/ssdb");
+
+            System.out.println(threadName+" start with "+polyin);
+            tdb.setPreparedStatementRef("select * from postgis.calculate_tci2(" +
+                    doy +","+year+","+
+                    "ST_GeomFromText('"+polyin+"',4326))");
+
+            tdb.runPreparedQuery();
+            if(tdb.next()){
+                System.out.println(threadName+" Result: ok");
+            }
+            System.out.println(threadName + " closing connection.");
+            tdb.closeConnection();
+
+
+            System.out.println(threadName + "- done");
+
+        } catch (Exception e) {
+            e.printStackTrace();
+
+            System.out.println(threadName + " interrupted: "+e.getMessage());
+            try{
+
+                System.out.println(threadName + " closing connection.");
+                tdb.closeConnection();
+            }catch (Exception eee){
+                System.out.println("Error "+eee.getMessage());
+            }
+        }
+        System.out.println(threadName + " exiting.");
+
+        return 1;
+
+    }
 
 
     public static long run_bric_evci(String name,

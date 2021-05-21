@@ -55,7 +55,12 @@ public RasterEngineCallable(String name,
                 return RasterEngine.run_bric_vhi(name,poly_in,x_start,
                         y_start,x_end,y_end,
                         year,doy);
+            }else if(imgtype.toLowerCase().matches("tci")){
+                return RasterEngine.run_bric_tci(name,poly_in,x_start,
+                        y_start,x_end,y_end,
+                        year,doy);
             }
+
             return -1L;
         }
 

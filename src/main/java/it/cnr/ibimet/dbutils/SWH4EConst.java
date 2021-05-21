@@ -14,12 +14,13 @@ public interface SWH4EConst {
     //Services const
     String WS_MODIS_SEARCH4FILES = "https://modwebsrv.modaps.eosdis.nasa.gov/axis2/services/MODAPSservices/searchForFiles?";
     String WS_MODIS_GETFILEURL = "https://modwebsrv.modaps.eosdis.nasa.gov/axis2/services/MODAPSservices/getFileUrls?";
-    String CHIRPS_GET_RAIN = "ftp://ftp.chg.ucsb.edu/pub/org/chg/products/CHIRPS-2.0/global_daily/netcdf/p05/by_month/chirps-v2.0.";
+    String CHIRPS_GET_RAIN = "https://data.chc.ucsb.edu/products/CHIRPS-2.0/global_daily/netcdf/p05/by_month/chirps-v2.0.";
+
     String MODIS_REPOBASE_URL = "https://ladsweb.modaps.eosdis.nasa.gov";
     String CHIRPS_GET_RAIN2 = ".days_p05.nc";
 
+    String CHIRPS_GET_PRELIMINARY_RAIN = "https://data.chc.ucsb.edu/products/CHIRPS-2.0/prelim/global_daily/netcdf/p05/chirps-v2.0.";
 
-    String CHIRPS_GET_PRELIMINARY_RAIN = "ftp://ftp.chg.ucsb.edu/pub/org/chg/products/CHIRPS-2.0/prelim/global_daily/netcdf/p05/chirps-v2.0.";
     String NO_RESULTS = "no results";
     //costanti per la multilingua
     String LINGUA_IT = "it";

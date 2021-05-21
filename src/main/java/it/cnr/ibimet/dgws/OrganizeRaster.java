@@ -848,6 +848,124 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
     }
 
+    /**
+     * Calculate TCI with multithread procedure
+     * @param nthread
+     * @param year
+     * @param doy
+     * @return
+     */
+    @GET
+    @Path("/j_calculate_mc_tci/{nthread}{year:(/year/.+?)?}{doy:(/doy/.+?)?}")
+    public Response updateTCI2(@PathParam("nthread") int nthread,
+                               @PathParam("year") String year,
+                               @PathParam("doy") String doy
+    ){
+
+
+        System.out.println("J_CALCULATE_MC_TCI  start "+year+" - "+doy);
+
+
+
+        MCProcedures mcp=null;
+        TDBManager tdb=null;
+        StringTokenizer st;
+        int retCode = -1;
+        try {
+
+            //checking for specific date
+            if(!year.matches("") && year != null &&
+                    !doy.matches("") && doy != null){
+
+                System.out.println("J_CALCULATE_MC_TCI: manual procedure");
+                mcp = new MCProcedures("jdbc/ssdb");
+
+
+                retCode = mcp.perform_tci_calculus(nthread,Integer.parseInt(year.split("/")[2]),Integer.parseInt(doy.split("/")[2]));
+
+
+            }else{
+
+                System.out.println("J_CALCULATE_MC_TCI: automatic procedure");
+                tdb= new TDBManager("jdbc/ssdb");
+
+                tdb.setPreparedStatementRef("select distinct mdoy, myear from postgis.model_startup " +
+                        "inner join postgis.imgtypes using (id_imgtype) " +
+                        "where imgtype = 'TCI'");
+                tdb.runPreparedQuery();
+                mcp = new MCProcedures("jdbc/ssdb");
+                while(tdb.next()){
+                    System.out.println("J_CALCULATE_MC_TCI - process - "+tdb.getInteger(1)+" - "+tdb.getInteger(2));
+                    retCode = mcp.perform_tci_calculus(nthread,tdb.getInteger(2),tdb.getInteger(1));
+                    if(retCode != 0) {
+                        mcp.shutdownExecutor();
+                        System.out.println("Shutdown complete");
+                    }
+                }
+                System.out.println("J_CALCULATE_MC_TCI - cleaning model_startup");
+                tdb.setPreparedStatementRef("delete from postgis.model_startup where id_imgtype = " +
+                        "(select id_imgtype from postgis.imgtypes where imgtype = 'TCI')");
+                tdb.performInsert();
+                System.out.println("J_CALCULATE_MC_TCI - closing connection");
+                tdb.closeConnection();
+
+                System.out.println("J_CALCULATE_MC_TCI done.");
+            }
+
+
+
+
+
+        }catch(SQLException sqle){
+            System.out.println("J_CALCULATE_MC_TCI Error SQL : "+sqle.getMessage());
+
+
+            try{
+
+                mcp.closeConnection();
+                tdb.closeConnection();
+            }catch (Exception ee){
+                System.out.println("J_CALCULATE_MC_TCI Error ee "+ee.getMessage());
+                try{
+
+
+                    mcp.closeConnection();
+                }catch (Exception eee){
+                    System.out.println("J_CALCULATE_MC_TCI Error eee "+eee.getMessage());
+                }
+            }
+
+            return Response.status(500).entity("J_CALCULATE_MC_TCI Error during import procedure!").build();
+
+        } catch (InterruptedException e) {
+            mcp.shutdownExecutor();
+            return Response.status(500).entity("J_CALCULATE_MC_TCI Executor interrupted!").build();
+        }catch(Exception e){
+            System.out.println("J_CALCULATE_MC_TCI Error generico : "+e.getMessage());
+
+
+            try{
+
+
+                mcp.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+            return Response.status(500).entity("J_CALCULATE_MC_TCI Error during import procedure!").build();
+
+        } finally{
+
+            if(retCode != 0) {
+
+                mcp.shutdownExecutor();
+                System.out.println("J_CALCULATE_MC_TCI Shutdown complete");
+            }
+        }
+
+        return Response.status(200).entity("TCI Multithread data updated!").build();
+
+    }
 
     @GET
     @Path("/j_calculate_mc_vci/{nthread}{year:(/year/.+?)?}{doy:(/doy/.+?)?}")
@@ -879,7 +997,7 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
             }else{
                 tdb= new TDBManager("jdbc/ssdb");
-                tdb.openConnection();
+
                 tdb.setPreparedStatementRef("select distinct mdoy, myear from postgis.model_startup " +
                         "inner join postgis.imgtypes using (id_imgtype) " +
                         "where imgtype = 'VCI'");
@@ -985,7 +1103,7 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
             }else{
                 tdb = new TDBManager("jdbc/ssdb");
-                tdb.openConnection();
+
                 tdb.setPreparedStatementRef("select distinct mdoy, myear from postgis.model_startup " +
                         "inner join postgis.imgtypes using (id_imgtype) " +
                         "where imgtype = 'VHI'");
@@ -1099,7 +1217,7 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
             }else{
                 tdb = new TDBManager("jdbc/ssdb");
-                tdb.openConnection();
+
                 tdb.setPreparedStatementRef("select distinct mdoy, myear from postgis.model_startup " +
                         "inner join postgis.imgtypes using (id_imgtype) " +
                         "where imgtype = 'EVCI'");
@@ -1871,7 +1989,7 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
 
 
-        System.out.println("Starting j_update_lst procedure...");
+        System.out.println("J_UPDATE_CHIRPS: begin procedure...");
         try {
 
             tdb = new TDBManager("jdbc/ssdb");
@@ -1935,6 +2053,7 @@ public class OrganizeRaster extends Application implements SWH4EConst {
             builder = new ProcessBuilder();
             builder.redirectErrorStream(true);  //Redirect error on stdout
 
+            //
             builder.command("wget","-O",TMP_DIR+"/chirps.nc", "-c",CHIRPS_GET_RAIN + year +"."+ month + CHIRPS_GET_RAIN2);
 
             System.out.println("Starting shell procedure");
@@ -2057,7 +2176,7 @@ public class OrganizeRaster extends Application implements SWH4EConst {
                             } else {
                                 System.out.println("SOMETHING WAS WRONG: there isn't any id_acquisizione for this image");
                             }
-                            sqlString = "drop table postgis.rain_flipped_warped";
+                            sqlString = "drop table IF EXISTS postgis.rain_flipped_warped";
 
 
                             System.out.println("erase temp table");
@@ -2528,25 +2647,44 @@ public class OrganizeRaster extends Application implements SWH4EConst {
                             System.out.println("Success.");
 
 
-                        /*    System.out.print("Updating tile reference...");
-                            sqlString = "insert into postgis.tile_references(id_acquisizione, tile_ref) " +
-                                    "select id_acquisizione, ? " +
-                                    "from postgis.acquisizioni inner join postgis.imgtypes using (id_imgtype) " +
-                                    "where extract(doy from dtime)=? " +
-                                    "and   extract(year from dtime)=? " +
-                                    "and   imgtype = ?";
-                            tdb.setPreparedStatementRef(sqlString);
-                            tdb.setParameter(DBManager.ParameterType.STRING, tile_y + "-" + tile_x, 1);
-                            tdb.setParameter(DBManager.ParameterType.INT, doy, 2);
-                            tdb.setParameter(DBManager.ParameterType.INT, year, 3);
-                            tdb.setParameter(DBManager.ParameterType.STRING, "TCI", 4);
-                            tdb.performInsert();
-*/
+
                         } else {
                             System.out.println("Attempt calculate TCI.");
                         }
 
                         System.out.println("Done.");
+                    }else{
+                        System.out.print("J_UPDATE_LST2: save entry in model startup");
+                        sqlString = "select * from postgis.model_startup where id_imgtype = (select id_imgtype from postgis.imgtypes where imgtype = ?)" +
+                                " and mdoy = ? and myear = ?";
+
+
+
+
+                        tdb.setPreparedStatementRef(sqlString);
+                        tdb.setParameter(DBManager.ParameterType.STRING,"TCI",1);
+                        tdb.setParameter(DBManager.ParameterType.INT,doy,2);
+                        tdb.setParameter(DBManager.ParameterType.INT,year,3);
+                        tdb.runPreparedQuery();
+                        if(tdb.next()){
+                            System.out.println("J_UPDATE_LST2: model startup is already inserted");
+                        }else{
+                            sqlString = "insert into postgis.model_startup "+
+                                    "(id_imgtype, mdoy, myear) "+
+                                    "values "+
+                                    "((select id_imgtype from postgis.imgtypes where imgtype = ?),"+
+                                    "?,?)";
+                            tdb.setPreparedStatementRef(sqlString);
+                            tdb.setParameter(DBManager.ParameterType.STRING,"TCI",1);
+                            tdb.setParameter(DBManager.ParameterType.INT,doy,2);
+                            tdb.setParameter(DBManager.ParameterType.INT,year,3);
+                            tdb.performInsert();
+
+                        }
+
+                        tdb.closeConnection();
+                        System.out.println("-- OK -- closing connection");
+
                     }
                 }
             }
@@ -2822,7 +2960,7 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
 
                         tdb = new TDBManager("jdbc/ssdb");
-                        tdb.openConnection();
+
                         tdb.setPreparedStatementRef(sqlString);
                         tdb.setParameter(DBManager.ParameterType.STRING,"VCI",1);
                         tdb.setParameter(DBManager.ParameterType.INT,doy,2);

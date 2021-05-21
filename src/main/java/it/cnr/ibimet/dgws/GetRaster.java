@@ -18,10 +18,7 @@ import javax.ws.rs.core.Response;
 
 import java.io.*;
 import java.util.*;
-
-
-
-
+import java.util.logging.Logger;
 
 
 /**
@@ -34,7 +31,7 @@ import java.util.*;
 @Path("/download")
 public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
 
-
+    static Logger logger = Logger.getLogger(String.valueOf(GetRaster.class));
 
 
     @GET
@@ -382,10 +379,11 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
             calendar.set(Calendar.YEAR, year);
             calendar.set(Calendar.DAY_OF_YEAR, doy);
 
-            System.out.println("J_GET_WHOLE_PNG: start procedure");
+            logger.info("start procedure");
 
             tdb = new TDBManager("jdbc/ssdb");
             Procedures thisProc = new Procedures(tdb);
+
 
             imgOut = thisProc.extractClassifiedImage(image_type,""+calendar.get(Calendar.YEAR),
                     ""+(calendar.get(Calendar.MONTH)+1),""+calendar.get(Calendar.DAY_OF_MONTH),
@@ -2290,6 +2288,9 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
                 //      rast_out = "ST_Reclass(ST_Clip(ST_Union(rast),1,ST_Transform(ST_GeomFromText('"+the_geom+"',"+from_srid.split("/")[2]+"),"+DBSRID+"),true),1,'"+reclass_param+"','8BUI') ";
                 checkArea = true;  //polygon area will be checked
 
+            }else if(image_type.matches("landuse")){
+                legend_param  = LANDUSE_LEGEND;
+                reclass_param = "";
             }else{
 
                 legend_param  = "grayscale";

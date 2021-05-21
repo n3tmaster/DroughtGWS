@@ -1821,3 +1821,263 @@ ALTER FUNCTION postgis.calculate_tci(integer, integer)
 
 
 
+
+-- Calculate TCI
+-- VERSION 4.0
+CREATE OR REPLACE FUNCTION postgis.calculate_tci(
+    doy_in integer,
+    year_in integer)
+    RETURNS minmaxrast
+    LANGUAGE 'plpgsql'
+
+    COST 100
+    VOLATILE
+AS $BODY$
+DECLARE
+    --LST rasters
+
+    tci RASTER;
+
+    return_rast minmaxrast;
+    nband INT;
+    imgtype_in INT;
+    id_acquisizione_in INT;
+
+BEGIN
+
+    RAISE NOTICE 'Calculating %, % for first iteration', doy_in, year_in;
+
+    select id_imgtype into imgtype_in
+    from   postgis.imgtypes
+    where  imgtype = 'LST';
+
+    RAISE NOTICE 'Get Last LST';
+    select ST_Union(b.rast) into return_rast.originrast
+    from   postgis.acquisizioni a inner join postgis.lst b using (id_acquisizione)
+    where  extract(year from a.dtime) = year_in
+      and    extract(doy from a.dtime) = doy_in
+      and    id_imgtype = imgtype_in;
+
+    nband := ST_NumBands(return_rast.originrast);
+    IF nband is NULL THEN
+        RAISE NOTICE 'LST %, % not found. Exit.',doy_in,year_in;
+        RETURN NULL;
+    END IF;
+
+    return_rast.maxrast := st_addband(st_makeemptyraster(st_band(return_rast.originrast,1)),'16BUI'::text);
+    return_rast.minrast := st_addband(st_makeemptyraster(st_band(return_rast.originrast,1)),'16BUI'::text);
+
+    RAISE NOTICE 'Calculating min';
+    SELECT ST_Union(rast,'MIN') INTO  return_rast.minrast
+    FROM   postgis.acquisizioni INNER JOIN postgis.lst USING (id_acquisizione)
+    WHERE  extract(doy from dtime) = doy_in
+      AND    extract(year from dtime) < year_in
+      AND    id_imgtype = imgtype_in;
+
+    RAISE NOTICE 'Calculating max';
+    SELECT ST_Union(rast,'MAX') INTO return_rast.maxrast
+    FROM   postgis.acquisizioni INNER JOIN postgis.lst USING (id_acquisizione)
+    WHERE  extract(doy from dtime) = doy_in
+      AND    extract(year from dtime) < year_in
+      AND    id_imgtype = imgtype_in;
+
+    RAISE NOTICE 'Calculating tci';
+    tci := ST_MapAlgebra(ARRAY[ROW(return_rast.maxrast,1), ROW(return_rast.minrast,1), ROW(return_rast.originrast,1)]::rastbandarg[],
+                         'calculate_tci_raster(double precision[], int[], text[])'::regprocedure,
+                         '32BF', 'LAST', null, 0, 0, null);
+
+    RAISE NOTICE 'saving tci raster';
+    IF EXISTS ( select id_acquisizione
+                from   postgis.acquisizioni inner join postgis.imgtypes using (id_imgtype)
+                where  imgtype = 'TCI'
+                  and    extract(doy from dtime) = doy_in
+                  and    extract(year from dtime) = year_in)  THEN
+
+        RAISE NOTICE 'Found';
+
+        select id_acquisizione into id_acquisizione_in
+        from   postgis.acquisizioni inner join postgis.imgtypes using (id_imgtype)
+        where  imgtype = 'TCI'
+          and    extract(doy from dtime) = doy_in
+          and    extract(year from dtime) = year_in;
+
+        RAISE NOTICE 'deleting old tci';
+        DELETE FROM postgis.tci
+        WHERE  id_acquisizione = id_acquisizione_in;
+
+    ELSE
+
+        RAISE NOTICE 'not found, create';
+        INSERT INTO postgis.acquisizioni (dtime, id_imgtype)
+        VALUES (to_timestamp(''||year_in||' '||doy_in||'', 'YYYY DDD'),(select id_imgtype from postgis.imgtypes where imgtype='TCI'));
+
+        select id_acquisizione into id_acquisizione_in
+        from   postgis.acquisizioni inner join postgis.imgtypes using (id_imgtype)
+        where  imgtype = 'TCI'
+          and    extract(doy from dtime) = doy_in
+          and    extract(year from dtime) = year_in;
+
+    END IF;
+    RAISE NOTICE 'ids %',id_acquisizione_in;
+
+    INSERT INTO postgis.tci (id_acquisizione, rast)
+    VALUES
+    (id_acquisizione_in, ST_Tile(tci,240,240));
+
+    RAISE NOTICE 'saved';
+    RETURN return_rast;
+END;
+$BODY$;
+
+ALTER FUNCTION postgis.calculate_tci(integer, integer)
+    OWNER TO postgres;
+
+
+
+-- calculate Tci2 : for mc procedures
+-- VERSION 1.0
+CREATE OR REPLACE FUNCTION postgis.calculate_tci2(
+    doy_in integer,
+    year_in integer,
+    poly_in geometry)
+    RETURNS boolean
+    LANGUAGE 'plpgsql'
+
+    COST 100
+    VOLATILE
+AS $BODY$
+DECLARE
+    --LST rasters
+
+    tci    RASTER;
+    lst_i RECORD;
+    maxrast RASTER;
+    minrast RASTER;
+    icount INT;
+    return_rast minmaxrast;
+    puppa INT;
+
+    id_acquisizione_in INT;
+
+BEGIN
+    RAISE NOTICE 'Process starts... %', current_timestamp;
+
+    select id_acquisizione into id_acquisizione_in
+    from   postgis.acquisizioni inner join postgis.imgtypes using (id_imgtype)
+    where  imgtype = 'TCI'
+      and    extract(doy from dtime) = doy_in
+      and    extract(year from dtime) = year_in;
+
+    RAISE NOTICE 'ids: %',id_acquisizione_in;
+
+    RAISE NOTICE 'Get Last LST tiles';
+    icount := 0;
+    FOR lst_i IN select rast, ST_ConvexHull(rast) as ext
+                 from postgis.lst inner join postgis.acquisizioni
+                                             using (id_acquisizione)
+                 where extract(doy from dtime) = doy_in
+                   and   extract(year from dtime) = year_in
+                   and   ST_Intersects(rast, poly_in)
+
+        LOOP
+            icount := icount + 1;
+            RAISE NOTICE 'processing tile: %', icount;
+
+            RAISE NOTICE 'calculating min, max';
+            -- maxrast := st_addband(st_makeemptyraster(st_band(lst_i.rast,1)),'16BUI'::text);
+            -- minrast := st_addband(st_makeemptyraster(st_band(lst_i.rast,1)),'16BUI'::text);
+
+            select ST_Union(rast,'MIN'),ST_Union(rast,'MAX')
+            into   minrast, maxrast
+            from postgis.lst inner join postgis.acquisizioni
+                                        using (id_acquisizione)
+            where extract(doy from dtime) = doy_in
+              and   extract(year from dtime) < year_in
+              and   ST_Intersects(rast, lst_i.ext);
+
+            --and   ST_ConvexHull(rast) = lst_i.ext;
+
+            maxrast := ST_Clip(maxrast, lst_i.ext, true);
+            minrast := ST_Clip(minrast, lst_i.ext, true);
+
+            -- RAISE NOTICE 'min: %, % max: %, %', ST_Width(minrast), ST_Height(minrast), ST_Width(maxrast), ST_Height(maxrast);
+
+            tci := ST_MapAlgebra(ARRAY[ROW(maxrast,1), ROW(minrast,1), ROW(lst_i.rast,1)]::rastbandarg[],
+                                 'calculate_tci_raster(double precision[], int[], text[])'::regprocedure,
+                                 '32BF', 'LAST', null, 0, 0, null);
+
+            RAISE NOTICE 'saving tci raster';
+
+            --	RAISE NOTICE 'ids %',id_acquisizione_in;
+            --  RAISE NOTICE 'tci: %, %', ST_Width(tci), ST_Height(tci);
+
+            INSERT INTO postgis.tci (id_acquisizione, rast)
+            VALUES
+            (id_acquisizione_in, ST_Tile(tci,240,240));
+
+            RAISE NOTICE 'saved';
+        END LOOP;
+    RAISE NOTICE 'Process concluded... %', current_timestamp;
+    RAISE NOTICE 'done';
+    RETURN TRUE;
+END;
+$BODY$;
+
+
+CREATE OR REPLACE FUNCTION postgis.deduplicate_tci(
+    doy_in integer,
+    year_in integer)
+    RETURNS boolean
+    LANGUAGE 'plpgsql'
+
+    COST 100
+    VOLATILE
+AS $BODY$
+DECLARE
+    --LST rasters
+
+    tci    RASTER;
+    lst_i RECORD;
+    maxrast RASTER;
+    minrast RASTER;
+    icount INT;
+    return_rast minmaxrast;
+    puppa INT;
+    imgtype_in INT;
+    id_acquisizione_in INT;
+
+BEGIN
+
+
+    select id_acquisizione into id_acquisizione_in
+    from   postgis.acquisizioni inner join postgis.imgtypes using (id_imgtype)
+    where  imgtype = 'TCI'
+      and    extract(doy from dtime) = doy_in
+      and    extract(year from dtime) = year_in;
+
+
+    FOR lst_i IN select ST_ConvexHull(rast) as ext, count(*) as num_tiles
+                 from postgis.tci
+                 where id_acquisizione = id_acquisizione_in
+                 group by st_convexhull(rast)
+                 having count(*) > 1
+
+        LOOP
+            DELETE FROM postgis.tci
+            WHERE rid = (SELECT rid FROM postgis.tci
+                         WHERE id_acquisizione = id_acquisizione_in
+                           AND   ST_ConvexHull(rast) = lst_i.ext
+                         LIMIT 1);
+
+            RAISE NOTICE 'erased';
+        END LOOP;
+    RAISE NOTICE 'Process concluded... %', current_timestamp;
+    RAISE NOTICE 'done';
+    RETURN TRUE;
+END;
+$BODY$;
+
+
+
+
+
