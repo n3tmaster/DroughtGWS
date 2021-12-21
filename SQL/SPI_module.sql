@@ -1332,7 +1332,7 @@ as $BODY$
 	require("RPostgreSQL")
 
 	pg.thrownotice('Performing query...')
-	conn <- dbConnect(dbDriver("PostgreSQL"), dbname="gisdb", host="149.139.16.84", port="5432", user="satserv" , password="ss!2017pwd")
+	conn <- dbConnect(dbDriver("PostgreSQL"), dbname="gisdb", host="<PUT HOST IP HERE>", port="5432", user="<PUT USER HERE>" , password="<PUT PASSWORD HERE>")
 	wh_rast <- dbGetQuery(conn, "select ST_Width(drast) as w, ST_Height(drast) as h from postgis.monthly_rainfall limit 1")
 
 
@@ -1507,7 +1507,7 @@ as $BODY$
 	require("RPostgreSQL")
 
 	pg.thrownotice('Performing query...')
-	conn <- dbConnect(dbDriver("PostgreSQL"), dbname="gisdb", host="149.139.16.84", port="5432", user="satserv" , password="ss!2017pwd")
+	conn <- dbConnect(dbDriver("PostgreSQL"), dbname="gisdb", host="<PUT HOST IP HERE>", port="5432", user="<USER>" , password="<PASSWORD>")
 	wh_rast <- dbGetQuery(conn, "select ST_Width(ST_Clip(drast,ST_GeomFromText('POLYGON((9.5 44.6,12.5 44.6,12.5 42,9.5 42,9.5 44.6))',4326),true)) as w, ST_Height(ST_Clip(drast,ST_GeomFromText('POLYGON((9.5 44.6,12.5 44.6,12.5 42,9.5 42,9.5 44.6))',4326),true)) as h from postgis.monthly_rainfall limit 1")
 
 
@@ -1606,7 +1606,7 @@ as $BODY$
 	require("RPostgreSQL")
 
 	pg.thrownotice('Performing query...')
-	conn <- dbConnect(dbDriver("PostgreSQL"), dbname="gisdb", host="149.139.16.84", port="5432", user="satserv" , password="ss!2017pwd")
+	conn <- dbConnect(dbDriver("PostgreSQL"), dbname="gisdb", host="<HOST HERE>", port="5432", user="<USER HERE>" , password="<PASSWORD HERE>")
 
 
 	mat_points <- dbGetQuery(conn, "select dmonth, dyear, w, h, pxval from postgis.extract_rainfall_dump('',0)")
@@ -1775,7 +1775,7 @@ as $BODY$
 	require("RPostgreSQL")
 
 	pg.thrownotice('Performing query...')
-	conn <- dbConnect(dbDriver("PostgreSQL"), dbname="gisdb", host="149.139.16.84", port="5432", user="satserv" , password="ss!2017pwd")
+	conn <- dbConnect(dbDriver("PostgreSQL"), dbname="gisdb", host="<HOST HERE>", port="5432", user="<USER HERE>" , password="<PASSWORD HERE>")
 
 
 	mat_points <- dbGetQuery(conn, "select dmonth, dyear, w, h, pxval from postgis.extract_rainfall_dump('POLYGON((9.5 44.6,12.5 44.6,12.5 42,9.5 42,9.5 44.6))',20)")
@@ -1869,7 +1869,7 @@ as $BODY$
 	require("RPostgreSQL")
 
 	pg.thrownotice('Performing query...')
-	conn <- dbConnect(dbDriver("PostgreSQL"), dbname="gisdb", host="149.139.16.84", port="5432", user="satserv" , password="ss!2017pwd")
+	conn <- dbConnect(dbDriver("PostgreSQL"), dbname="gisdb", host="<HOST HERE>", port="5432", user="<USER HERE>" , password="<PASSWORD HERE>")
 
 
 	mat_points <- dbGetQuery(conn, "select dmonth, dyear, w, h, pxval from postgis.extract_rainfall_dump('POLYGON((9.5 44.6,12.5 44.6,12.5 42,9.5 42,9.5 44.6))',20)")
@@ -2125,7 +2125,7 @@ as $BODY$
 	require("RPostgreSQL")
 
 	pg.thrownotice('Performing query...')
-	conn <- dbConnect(dbDriver("PostgreSQL"), dbname="gisdb", host="149.139.16.84", port="5432", user="satserv" , password="ss!2017pwd")
+	conn <- dbConnect(dbDriver("PostgreSQL"), dbname="gisdb", host="<HOST HERE>", port="5432", user="<USER HERE>" , password="<PASSWORD HERE>")
 
 
 	mat_points <- dbGetQuery(conn, arg2)
@@ -2312,7 +2312,7 @@ as $BODY$
 	require("RPostgreSQL")
 
 	pg.thrownotice('Performing query...')
-	conn <- dbConnect(dbDriver("PostgreSQL"), dbname="gisdb", host="149.139.16.84", port="5432", user="satserv" , password="ss!2017pwd")
+	conn <- dbConnect(dbDriver("PostgreSQL"), dbname="gisdb", host="<HOST HERE>", port="5432", user="<USER HERE>" , password="<PASSWORD HERE>")
 
 	mat_points <- dbGetQuery(conn, "select dmonth, dyear, w, h, pxval from postgis.extract_rainfall_dump('',0)")
 

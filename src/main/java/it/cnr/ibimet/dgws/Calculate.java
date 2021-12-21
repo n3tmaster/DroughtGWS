@@ -25,6 +25,7 @@ import java.text.DecimalFormatSymbols;
 import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
+import java.util.logging.Logger;
 
 /**
  * Created by lerocchi on 16/02/17.
@@ -40,6 +41,84 @@ import java.util.function.Consumer;
  */
 public class Calculate  extends Application implements SWH4EConst {
 
+    static Logger logger = Logger.getLogger(String.valueOf(Calculate.class));
+
+
+
+
+
+    @POST
+    @Consumes(MediaType.TEXT_PLAIN)
+    @Produces("image/tiff")
+    @Path("/eta/{dtime}/{srid}")
+    public Response calculateETa2(@PathParam("dtime") String dtime,
+                                 @PathParam("srid") String srid,
+                                 String polygon){
+
+        byte[] imgOut=null;
+        TDBManager tdb=null;
+        String sqlString;
+
+        try {
+
+            logger.info("begin procedure "+dtime);
+
+
+
+
+            if(polygon.matches("")){
+                logger.info("polygon is empty");
+                return Response.status(200).entity("polygon is empty").build();
+            }else{
+                tdb = new TDBManager("jdbc/ssdb");
+
+                logger.info("call ETa calculation");
+                Procedures thisProc = new Procedures(tdb);
+                imgOut = thisProc.calculate_ETa(polygon, srid, dtime);
+
+
+                if (imgOut != null) {
+                    logger.info("Calculated, closing connection");
+                    tdb.closeConnection();
+                }else{
+                    logger.info("image not calculated, closing connection");
+                    try{
+                        tdb.closeConnection();
+                    }catch (Exception ee){
+                        logger.warning(ee.getMessage());
+                    }
+                    return  Response.status(Response.Status.NOT_FOUND).entity("Failed attempt to calculate ETa image").build();
+                }
+            }
+
+        }catch(Exception e){
+            logger.warning(e.getMessage());
+
+            try{
+                tdb.closeConnection();
+            }catch (Exception ee){
+                logger.warning("Error "+ee.getMessage());
+            }
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }finally {
+            try{
+                tdb.closeConnection();
+            }catch (Exception ee){
+                logger.warning(ee.getMessage());
+            }
+        }
+
+
+        logger.info("done");
+
+        Response.ResponseBuilder responseBuilder = Response.ok(imgOut);
+        responseBuilder.header("Content-Disposition", "attachment; filename=\"ETa_"+dtime+".tiff\"");
+
+        return responseBuilder.build();
+
+
+    }
 
     @GET
     @Produces("image/tiff")

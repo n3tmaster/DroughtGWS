@@ -278,4 +278,98 @@ public class Procedures implements SWH4EConst, ReclassConst {
 
 
      }
+
+    /**
+     * calculate ET real based on given polygon and timestamp
+     * @param geo_in - polygon (WKT version)
+     * @param srid - SRID for given polygon
+     * @param dtime - timestamp for ETR calculation
+     * @return  - Result image in GeoTIFF format
+     * @throws Exception
+     */
+    public byte[] calculate_ETa(String geo_in, String srid, String dtime) throws Exception
+    {
+
+        byte[] imgOut=null;
+
+
+        String sqlString="SELECT * FROM postgis.ST_AsGDALRaster(postgis.calculate_real_et( ST_GeometryFromText('"+geo_in+"',"+srid+")," +
+                "'"+dtime+"'::timestamp),'GTiff')";
+
+        logger.info(sqlString);
+        tdb.setPreparedStatementRef(sqlString);
+        tdb.runPreparedQuery();
+
+
+        if (tdb.next()) {
+            logger.info("ETa calculated");
+            imgOut = tdb.getPStmt().getResultSet().getBytes(1);
+            logger.info("Image Readed length: "+imgOut.length);
+        }
+
+        return imgOut;
+    }
+
+
+    /**
+     * Create new acquisition if doesn't exist and returning ID.
+     * @param imgtype   - imgtype
+     * @param year     - year
+     * @param doy   - doy
+     * @return  - ID of new acquisition or ID of existing acquisition.
+     * @throws SQLException
+     */
+    public int create_acquisition(String imgtype, String year, String doy) throws SQLException
+    {
+        logger.info("create new entry for "+ imgtype + " "+year+ " " + doy);
+        int retCode = -1;
+        String sqlString="INSERT INTO postgis.acquisizioni (dtime, id_imgtype) " +
+                "VALUES " +
+                "(to_timestamp('"+year+" "+doy+"', 'YYYY DDD'), (SELECT id_imgtype FROM postgis.imgtypes WHERE imgtype = '"+imgtype+"' )) "+
+                "ON CONFLICT ON CONSTRAINT acquisizione_unique " +
+                "DO UPDATE SET dtime=EXCLUDED.dtime " +
+                "RETURNING id_acquisizione";
+
+
+
+        logger.info(sqlString);
+        tdb.setPreparedStatementRef(sqlString);
+        tdb.runPreparedQuery();
+
+
+        if (tdb.next()) {
+
+            retCode = tdb.getInteger(1);
+
+            logger.info("Acquisition ID: "+retCode);
+        }
+
+        return retCode;
+    }
+
+    public int create_etr(String ids, String polygon, String year, String doy) throws SQLException
+    {
+        logger.info("calculaate ETR ");
+        int retCode = -1;
+        String sqlString="SELECT * FROM postgis.calculate_save_etr("+polygon+",to_timestamp('"+year+" "+doy+"', 'YYYY DDD')::timestamp,"+ids+")";
+
+
+        logger.info(sqlString);
+        tdb.setPreparedStatementRef(sqlString);
+        tdb.runPreparedQuery();
+
+
+        if (tdb.next()) {
+
+            retCode = tdb.getInteger(1);
+
+            if(retCode == 0){
+                logger.info("ETR image saved");
+            }else{
+                logger.info("error occurred");
+            }
+        }
+
+        return retCode;
+    }
 }

@@ -22,11 +22,11 @@ gdalwarp -of GTiff -t_srs 'EPSG:4326' 'HDF4_EOS:EOS_GRID:/tmp/tomcat7-tomcat7-tm
 rm -f /tmp/tomcat7-tomcat7-tmp/hdfout*.tif
 rm -f /tmp/tomcat7-tomcat7-tmp/prod*.hdf
 
-ILCOMANDO="curl -X POST  http://149.139.16.84:8080/dgws/api/organize/j_organize_raster/evi/$year/$doy"
+ILCOMANDO="curl -X POST  http://XXXXXX:8080/dgws/api/organize/j_organize_raster/evi/$year/$doy"
 
 eval $ILCOMANDO
 
-ILCOMANDO="curl -X POST  http://149.139.16.84:8080/dgws/api/organize/j_organize_raster/ndvi/$year/$doy"
+ILCOMANDO="curl -X POST  http://XXXXXX:8080/dgws/api/organize/j_organize_raster/ndvi/$year/$doy"
 
 eval $ILCOMANDO
 

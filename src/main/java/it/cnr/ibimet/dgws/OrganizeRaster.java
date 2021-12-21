@@ -7,16 +7,19 @@ import javax.ws.rs.*;
 
 import it.cnr.ibimet.restutil.HttpURLManager;
 import it.lr.libs.DBManager;
+import org.apache.commons.io.FileUtils;
 import org.glassfish.jersey.media.multipart.FormDataParam;
 import org.w3c.dom.Document;
 import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
 
 import javax.ws.rs.core.Application;
+import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.*;
+import java.nio.file.Files;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDate;
@@ -24,8 +27,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
-
-
+import java.util.logging.Logger;
 
 
 /**
@@ -39,6 +41,10 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
 
     public static final String TMP_DIR = System.getProperty("java.io.tmpdir");
+
+
+    static Logger logger = Logger.getLogger(String.valueOf(OrganizeRaster.class));
+
 
     @POST
     @Path("/j_raster_save")
@@ -1963,6 +1969,103 @@ public class OrganizeRaster extends Application implements SWH4EConst {
     }
 
 
+    @POST
+    @Consumes(MediaType.TEXT_PLAIN)
+    @Produces(MediaType.TEXT_PLAIN)
+    @Path("/eta/{srid}{year_in:(/year_in/.+?)?}{doy_in:(/doy_in/.+?)?}")
+    public Response createETa(@PathParam("srid") String srid,
+                              @PathParam("year_in") String year_in,
+                              @PathParam("doy_in") String doy_in,
+                                  String polygon){
+
+        TDBManager tdb=null;
+        String sqlString, year="", doy="";
+        int retCode = -1, ids=-1;
+        String outmsg = "";
+        try {
+            tdb = new TDBManager("jdbc/ssdb");
+            logger.info("begin procedure "+polygon);
+
+
+            if(year_in.matches("") || year_in == null){
+                sqlString = "select * from postgis.calculate_last_element_2(?,?)";
+                tdb.setPreparedStatementRef(sqlString);
+                tdb.setParameter(DBManager.ParameterType.STRING,"ETR",1);
+                tdb.setParameter(DBManager.ParameterType.INT,""+16,2);
+
+                tdb.runPreparedQuery();
+
+                if(tdb.next()){
+                    if(tdb.getInteger(7) == 1 && tdb.getInteger(5) < 16){
+                        doy="1";
+                        year=""+(tdb.getInteger(8));
+                    }else{
+                        doy=""+(tdb.getInteger(5));
+                        year=""+tdb.getInteger(8) ;
+                    }
+                }
+
+            }else{
+                year= year_in.split("/")[2];
+                doy= doy_in.split("/")[2];
+            }
+
+            logger.info("year: "+ year + " doy: "+doy);
+            Procedures thisProc = new Procedures(tdb);
+
+            if(polygon.matches("")){
+                logger.info("polygon is empty");
+
+                logger.info("closing connection");
+                tdb.closeConnection();
+                return Response.status(200).entity("polygon is empty").build();
+            }else{
+                ids = thisProc.create_acquisition("ETR",year,doy);
+
+
+                logger.info("call ETa calculation");
+
+                retCode = thisProc.create_etr(""+ids,"postgis.ST_GeomFromText('"+polygon+"',"+srid+")",year,doy);
+
+
+                if (retCode == 0) {
+                    logger.info("Calculated and saved, closing connection");
+                    tdb.closeConnection();
+                }else{
+                    logger.info("image not calculated, closing connection");
+                    try{
+                        tdb.closeConnection();
+                    }catch (Exception ee){
+                        logger.warning(ee.getMessage());
+                    }
+                    return  Response.status(Response.Status.NOT_FOUND).entity("Failed attempt to calculate ETa image").build();
+                }
+            }
+
+        }catch(Exception e){
+            logger.warning(e.getMessage());
+
+            try{
+                tdb.closeConnection();
+            }catch (Exception ee){
+                logger.warning("Error "+ee.getMessage());
+            }
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }finally {
+            try{
+                tdb.closeConnection();
+            }catch (Exception ee){
+                logger.warning(ee.getMessage());
+            }
+        }
+
+
+        logger.info("done");
+        return  Response.status(Response.Status.OK).entity("ETR image calculated and saved").build();
+
+    }
+
     /**
      * Method for update CHIRPS rainfall images
      * @param year_in
@@ -2529,11 +2632,13 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
             System.out.println(""+year+"-"+month+"-"+day+"  "+doy);
 
-            System.out.println(WS_MODIS_SEARCH4FILES+"start="+year+"-"+month+"-"+day+"&stop="+year+"-"+month+"-"+day+
-                    "&coordsOrTiles=tiles&north="+tile_y+"&south="+tile_y+"&east="+tile_x+"&west="+tile_x+"&product="+product+"&collection="+collection);
+            String url2send = WS_MODIS_SEARCH4FILES+"start="+year+"-"+month+"-"+day+"&stop="+year+"-"+month+"-"+day+
+                    "&coordsOrTiles=tiles&north="+tile_y+"&south="+tile_y+"&east="+tile_x+"&west="+tile_x+"&product="+product+"&collection="+collection;
 
-            httpMng.setUrl(WS_MODIS_SEARCH4FILES+"start="+year+"-"+month+"-"+day+"&stop="+year+"-"+month+"-"+day+
-                    "&coordsOrTiles=tiles&north="+tile_y+"&south="+tile_y+"&east="+tile_x+"&west="+tile_x+"&product="+product+"&collection="+collection);
+
+            logger.info(url2send);
+
+            httpMng.setUrl(url2send);
 
 
             db = DocumentBuilderFactory.newInstance().newDocumentBuilder();
@@ -2578,7 +2683,7 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
                     for (int icount = 0; icount < nList.getLength(); icount++) {
 
-                        System.out.println("Elem : "+nList.item(icount).getTextContent());
+                        logger.info("Elem : "+nList.item(icount).getTextContent());
 
                         builder = new ProcessBuilder();
                         builder.redirectErrorStream(true);  //Redirect error on stdout
@@ -2597,13 +2702,13 @@ public class OrganizeRaster extends Application implements SWH4EConst {
 
 
                         //Extracting EVI
-                        System.out.println("extracting LST...");
+                        logger.info("extracting LST...");
 
                         builder.redirectErrorStream(true);  //Redirect error on stdout
 
                         builder.command("/usr/bin/import_lst.sh",year,doy,""+icount);
 
-                        System.out.println("Starting shell procedure");
+                        logger.info("Starting shell procedure");
 
                         process = builder.start();
 

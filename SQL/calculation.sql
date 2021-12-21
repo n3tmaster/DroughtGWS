@@ -393,10 +393,6 @@ BEGIN
 END;
 $BODY$;
 
-ALTER FUNCTION postgis.calculate_last_element(character varying)
-    OWNER TO postgres;
-
-
 
 
 
@@ -433,9 +429,6 @@ BEGIN
     RETURN NEXT;
 END;
 $BODY$;
-
-ALTER FUNCTION postgis.calculate_last_element(character varying, integer)
-    OWNER TO postgres;
 
 
 
@@ -475,12 +468,6 @@ BEGIN
 END;
 $BODY$;
 
-ALTER FUNCTION postgis.calculate_last_element(character varying, integer, character varying)
-    OWNER TO postgres;
-
-
-
-
 -- FUNCTION: postgis.calculate_last_element_2(character varying, integer)
 
 -- DROP FUNCTION postgis.calculate_last_element_2(character varying, integer);
@@ -516,10 +503,6 @@ BEGIN
     RETURN NEXT;
 END;
 $BODY$;
-
-ALTER FUNCTION postgis.calculate_last_element_2(character varying, integer, character varying)
-    OWNER TO postgres;
-
 
 
 
@@ -559,4 +542,61 @@ BEGIN
  RETURN rast_out;
 END;
 
+$BODY$;
+
+
+--calculate last element and fill from box
+CREATE OR REPLACE FUNCTION postgis.calculate_last_element_and_fill_from_box(
+    imgtype_in character varying,
+    tbl_name character varying,
+    rast_field character varying,
+    step integer,
+    gap integer,
+    box_in geometry)
+    RETURNS TABLE(odoy_next integer, oday_next integer, omonth_next integer, oyear_next integer)
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+    ROWS 1000
+
+AS $BODY$
+DECLARE
+    max_dtime timestamp;
+    stop_dtime timestamp;
+    n_days integer;
+    i integer;
+BEGIN
+    -- check the existence of one or more doy for given year
+
+    EXECUTE 'SELECT max(dtime), extract(day from ((current_timestamp - interval '''||gap||''' day)- max(dtime)))
+			FROM postgis.acquisizioni INNER JOIN postgis.imgtypes USING (id_imgtype)
+			WHERE imgtype = $1
+			AND   id_acquisizione IN (SELECT id_acquisizione
+									  FROM postgis.'||tbl_name||'
+									  WHERE ST_Intersects(wind,$2))'
+        INTO   max_dtime, n_days
+        USING  imgtype_in, box_in;
+
+    RAISE NOTICE  'Max Dtime: %',max_dtime;
+    RAISE NOTICE  'n days to present: %',n_days;
+    IF n_days > 0 THEN
+        FOR i IN 1..n_days LOOP
+                EXECUTE 'SELECT $1 + interval '''||step||''' day'
+                    INTO max_dtime
+                    USING max_dtime;
+
+                RAISE NOTICE  '% dtime : %', i, max_dtime;
+
+                odoy_next := extract(doy from max_dtime);
+                oday_next := extract(day from max_dtime);
+                omonth_next := extract(month from max_dtime);
+                oyear_next := extract(year from max_dtime);
+
+                RETURN NEXT;
+            END LOOP;
+
+    ELSE
+        RAISE NOTICE 'no data';
+    END IF;
+END;
 $BODY$;
