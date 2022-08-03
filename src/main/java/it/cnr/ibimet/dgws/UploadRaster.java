@@ -9,6 +9,7 @@ import org.glassfish.jersey.media.multipart.FormDataParam;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 
+import javax.annotation.security.PermitAll;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.POST;
 
@@ -21,6 +22,7 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.sql.SQLException;
+import java.util.logging.Logger;
 
 /**
  * Created by lerocchi on 03/07/17.
@@ -30,7 +32,7 @@ import java.sql.SQLException;
 
 @Path("/upload")
 public class UploadRaster extends Application implements SWH4EConst {
-
+    static Logger logger = Logger.getLogger(String.valueOf(UploadRaster.class));
 
     /**
      * method for uploading file to GeoDB
@@ -61,14 +63,7 @@ public class UploadRaster extends Application implements SWH4EConst {
 
             //byte[] rasterdata = IOUtils.toByteArray(fileInputStream);
 
-
-
-
             tdb = new TDBManager("jdbc/ssdb");
-
-
-
-
 
             File file = File.createTempFile("rasterfile", ".tiff");
 
@@ -385,6 +380,70 @@ public class UploadRaster extends Application implements SWH4EConst {
             }
         }
     }
+
+
+    /**
+     * method for uploading netCDF containing SPI outputs
+     *
+     * @param fileInputStream   - file input stream
+     * @param contentDispositionHeader -- header
+     * @param dtime_from - timestamp start
+     * @param dtime_to - timestamp stop
+     * @param step - step (1,3,6,12,24)
+     * @return response
+     */
+
+    @POST
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
+    @Path("/j_spi_up")
+    @PermitAll
+    public Response uploadSPI(@FormDataParam("file") InputStream fileInputStream,
+                           @FormDataParam("file") FormDataContentDisposition contentDispositionHeader,
+                           @FormDataParam("dtime_from") String dtime_from, @FormDataParam("dtime_to") String dtime_to,
+                           @FormDataParam("step") String step){
+
+        TDBManager tdb=null;
+        String tblname="";
+        File file=null;
+        try{
+
+
+
+            tdb = new TDBManager("jdbc/ssdb");
+
+            file = File.createTempFile("spi_input", ".nc");
+
+            logger.info("Building temp file "+file.toPath()+"...");
+
+            Files.copy(fileInputStream, file.toPath(), StandardCopyOption.REPLACE_EXISTING);
+
+            Procedures thisProc = new Procedures();
+
+            thisProc.import_spi_images(tdb, file.getAbsolutePath(),dtime_from,dtime_to,Integer.parseInt(step));
+
+            return Response.status(200).entity("Images saved!").build();
+
+        }catch(Exception e){
+            logger.warning(e.getMessage());
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }finally {
+            try{
+                logger.info("close connection");
+                assert tdb != null;
+                tdb.closeConnection();
+
+                logger.info("deleting temp file...");
+
+                assert file != null;
+                file.delete();
+                logger.info("done.");
+            }catch (Exception e){
+                logger.warning(e.getMessage());
+            }
+        }
+    }
+
 
     @POST
     @Path("/chirps/{year}/{month}/{attachmentName}")

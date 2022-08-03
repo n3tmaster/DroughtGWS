@@ -1710,6 +1710,93 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
     }
 
 
+    /**
+     *
+     * @param image_type
+     * @param year
+     * @param month
+     * @param day
+     * @return
+     *          extracted image in png format or an error code
+     */
+    @GET
+    @Produces("image/gtiff")
+    @Path("/j_get_whole_spi/{image_type}/{year}/{month}/{day}")
+    public Response extractWholeSPI(@PathParam("image_type") String image_type,
+                                        @PathParam("year") String year,
+                                        @PathParam("month") String month,
+                                        @PathParam("day") String day){
+
+        byte[] imgOut=null;
+        TDBManager tdb=null;
+
+        Vector<InputStream> inputStreams = new Vector<InputStream>();
+
+        try {
+
+            if (day == null)
+                day = "1";
+
+            if (Integer.parseInt(day) < 10 )
+                day = "0"+day;
+            if (Integer.parseInt(month) < 10 )
+                month = "0"+month;
+
+            logger.info("start procedure");
+
+
+
+            tdb = new TDBManager("jdbc/ssdb");
+            Procedures thisProc = new Procedures(tdb);
+
+            imgOut = thisProc.extractImageSPI(image_type,year,month,day);
+
+
+
+            logger.info("closing connection");
+            tdb.closeConnection();
+
+            if(imgOut == null){
+                return  Response.status(Response.Status.NOT_FOUND).entity("Image "+image_type+" of "+day+"-"+month+"-"+year+" not found ").build();
+            }
+
+        }catch(WSExceptions wse){
+            System.out.println("J_GET_WHOLE_GTIFF error: "+wse.getMessage());
+
+            switch(wse.getCode().getErrCode()){
+                case ErrorCode.POLYGON_TOO_BIG:
+                    return  Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_TOO_BIG_STR).build();
+                case ErrorCode.POLYGON_IS_MANDATORY:
+                    return  Response.status(Response.Status.OK).entity(ErrorCode.POLYGON_IS_MANDATORY_STR).build();
+            }
+
+            try{
+                System.out.println("J_GET_WHOLE_GTIFF: closing connection");
+                tdb.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+        }catch(Exception e){
+            System.out.println("Error  : "+e.getMessage());
+
+            try{
+                tdb.closeConnection();
+            }catch (Exception ee){
+                System.out.println("Error "+ee.getMessage());
+            }
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }
+
+        Response.ResponseBuilder responseBuilder = Response.ok(imgOut);
+        responseBuilder.header("Content-Disposition", "attachment; filename=\""+image_type+"_"+year+"_"+month+"_"+day+".tiff\"");
+
+        return responseBuilder.build();
+
+    }
+
+
 /*
     @GET
     @Produces("image/gtiff")
@@ -2385,6 +2472,8 @@ public class GetRaster  extends Application implements SWH4EConst, ReclassConst{
         responseBuilder.header("Content-Disposition", "attachment; filename=\""+image_type+"_"+year+"_"+doy+".tiff\"");
         return responseBuilder.build();
     }
+
+
 
 
     @GET

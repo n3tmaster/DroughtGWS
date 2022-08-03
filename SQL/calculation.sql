@@ -48,6 +48,709 @@ END;
 
 $BODY$;
 
+-- calculate spi conditions over region from given country, month and year
+
+CREATE OR REPLACE FUNCTION postgis.calc_spi_stats_over_region(
+    month_in integer,
+    year_in integer,
+    spi_type character varying,
+    spi_reclass character varying,
+    country_in character varying)
+    RETURNS TABLE(region_name_o character varying, hazard_class_o double precision, count_o integer, perc_o double precision)
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+    ROWS 1000
+
+AS $BODY$
+
+DECLARE
+    spirast RASTER;
+
+    rowrecord RECORD;
+    rowrecorda RECORD;
+
+    bandtype varchar := '32BSI';
+    dtot bigint;
+
+    m20 integer;
+    m15 integer;
+    m10 integer;
+    m0 integer;
+    p10 integer;
+    p15 integer;
+    p20 integer;
+
+BEGIN
+    RAISE NOTICE 'Extract spi raster';
+
+    FOR rowrecorda IN SELECT regione, reg_boundaries.the_geom
+                      FROM reg_boundaries INNER JOIN eu_boundaries ON eu_boundaries.gid = reg_boundaries.id_eu_boundaries
+                      WHERE lower(name_engl) = country_in
+                      ORDER BY regione
+        LOOP
+            EXECUTE 'SELECT postgis.ST_Reclass(postgis.ST_Union(rast),1,$4,$5) '||
+                    'FROM postgis.'||spi_type||' INNER JOIN postgis.acquisizioni USING (id_acquisizione) ' ||
+                    'WHERE extract(year from dtime) = $2 ' ||
+                    'AND extract(month from dtime) = $3 ' ||
+                    'AND postgis.ST_Intersects(rast,$1) '
+                USING rowrecorda.the_geom, year_in, month_in, spi_reclass, bandtype INTO spirast;
+
+            spirast := ST_Clip(spirast,rowrecorda.the_geom,ST_BandNoDataValue(spirast),true);
+
+            m20 := postgis.ST_ValueCount(spirast,1,true,-20.0);
+            m15 := postgis.ST_ValueCount(spirast,1,true,-15.0);
+            m10 := postgis.ST_ValueCount(spirast,1,true,-10.0);
+            m0 := postgis.ST_ValueCount(spirast,1,true,0.0);
+            p10 := postgis.ST_ValueCount(spirast,1,true,10.0);
+            p15 := postgis.ST_ValueCount(spirast,1,true,15.0);
+            p20 := postgis.ST_ValueCount(spirast,1,true,20.0);
+            dtot := m20 + m15 + m10 + m0 + p10 + p15 + p20;
+
+            RAISE NOTICE '% - % % % % % % % - %',rowrecorda.regione,m20,m15,m10,m0,p10,p15,p20,dtot;
+
+            region_name_o := rowrecorda.regione;
+            hazard_class_o := -20.0;
+            count_o := m20;
+            perc_o := ROUND((m20 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+            region_name_o := rowrecorda.regione;
+            hazard_class_o := -15.0;
+            count_o := m15;
+            perc_o := ROUND((m15 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+            region_name_o := rowrecorda.regione;
+            hazard_class_o := -10.0;
+            count_o := m10;
+            perc_o := ROUND((m10 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+            region_name_o := rowrecorda.regione;
+            hazard_class_o := 0.0;
+            count_o := m0;
+            perc_o := ROUND((m0 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+            region_name_o := rowrecorda.regione;
+            hazard_class_o := 10.0;
+            count_o := p10;
+            perc_o := ROUND((p10 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+            region_name_o := rowrecorda.regione;
+            hazard_class_o := 15.0;
+            count_o := p15;
+            perc_o := ROUND((p15 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+            region_name_o := rowrecorda.regione;
+            hazard_class_o := 20.0;
+            count_o := p20;
+            perc_o := ROUND((p20 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+        END LOOP;
+
+END;
+$BODY$;
+
+--calculate spi conditions over eu countries for given time interval
+CREATE OR REPLACE FUNCTION postgis.calc_spi_stats_over_eu(
+    month_in integer,
+    year_in integer,
+    month2_in integer,
+    year2_in integer,
+    spi_type character varying,
+    spi_reclass character varying,
+    country_in character varying)
+    RETURNS TABLE(province_name_o character varying, year_o integer, month_o integer, hazard_class_o double precision, count_o integer, perc_o double precision)
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+    ROWS 1000
+
+AS $BODY$
+
+DECLARE
+    spirast RASTER;
+
+    rowrecord RECORD;
+    rowrecorda RECORD;
+
+    bandtype varchar := '32BSI';
+    dtot bigint;
+
+    myear integer;
+    mmonth integer;
+    m20 integer;
+    m15 integer;
+    m10 integer;
+    m0 integer;
+    p10 integer;
+    p15 integer;
+    p20 integer;
+    dtime1 timestamp;
+    dtime2 timestamp;
+
+BEGIN
+
+    dtime1 := to_timestamp(''||year_in||' '||month_in||' 01','YYYY MM DD');
+    dtime2 := to_timestamp(''||year2_in||' '||(month2_in + 1)||' 01','YYYY MM DD');
+
+    RAISE NOTICE 'Extract spi raster from % to %',dtime1, dtime2;
+
+    FOR rowrecorda IN SELECT name_engl as den_uts, the_geom FROM postgis.eu_boundaries WHERE LOWER(name_engl) = country_in
+        LOOP
+            FOR rowrecord IN EXECUTE 'SELECT extract(year from dtime) as yo, extract(month from dtime) as mo, '||
+                                     'postgis.ST_Reclass(postgis.ST_Union(rast),1,$4,$5) as ro '||
+                                     'FROM postgis.'||spi_type||' INNER JOIN postgis.acquisizioni USING (id_acquisizione) ' ||
+                                     'WHERE dtime BETWEEN $2 AND $3 ' ||
+                                     'AND postgis.ST_Intersects(rast,$1) '||
+                                     'GROUP BY 1,2 '||
+                                     'ORDER BY 1,2'
+                USING rowrecorda.the_geom, dtime1, dtime2, spi_reclass, bandtype LOOP
+
+                    spirast := ST_Clip(rowrecord.ro,rowrecorda.the_geom,ST_BandNoDataValue(rowrecord.ro),true);
+
+                    m20 := postgis.ST_ValueCount(spirast,1,true,-20.0);
+                    m15 := postgis.ST_ValueCount(spirast,1,true,-15.0);
+                    m10 := postgis.ST_ValueCount(spirast,1,true,-10.0);
+                    m0 := postgis.ST_ValueCount(spirast,1,true,0.0);
+                    p10 := postgis.ST_ValueCount(spirast,1,true,10.0);
+                    p15 := postgis.ST_ValueCount(spirast,1,true,15.0);
+                    p20 := postgis.ST_ValueCount(spirast,1,true,20.0);
+                    dtot := m20 + m15 + m10 + m0 + p10 + p15 + p20;
+
+                    RAISE NOTICE '% - % % - % % % % % % % - %',rowrecorda.den_uts,rowrecord.yo,rowrecord.mo,m20,m15,m10,m0,p10,p15,p20,dtot;
+
+                    province_name_o := rowrecorda.den_uts;
+                    year_o := rowrecord.yo;
+                    month_o := rowrecord.mo;
+                    hazard_class_o := -20.0;
+                    count_o := m20;
+                    perc_o := ROUND((m20 * 100.0)/dtot, 2);
+
+                    RETURN NEXT;
+
+                    province_name_o := rowrecorda.den_uts;
+                    year_o := rowrecord.yo;
+                    month_o := rowrecord.mo;
+                    hazard_class_o := -15.0;
+                    count_o := m15;
+                    perc_o := ROUND((m15 * 100.0)/dtot, 2);
+
+                    RETURN NEXT;
+
+                    province_name_o := rowrecorda.den_uts;
+                    year_o := rowrecord.yo;
+                    month_o := rowrecord.mo;
+                    hazard_class_o := -10.0;
+                    count_o := m10;
+                    perc_o := ROUND((m10 * 100.0)/dtot, 2);
+
+                    RETURN NEXT;
+
+                    province_name_o := rowrecorda.den_uts;
+                    year_o := rowrecord.yo;
+                    month_o := rowrecord.mo;
+                    hazard_class_o := 0.0;
+                    count_o := m0;
+                    perc_o := ROUND((m0 * 100.0)/dtot, 2);
+
+                    RETURN NEXT;
+
+                    province_name_o := rowrecorda.den_uts;
+                    year_o := rowrecord.yo;
+                    month_o := rowrecord.mo;
+                    hazard_class_o := 10.0;
+                    count_o := p10;
+                    perc_o := ROUND((p10 * 100.0)/dtot, 2);
+
+                    RETURN NEXT;
+
+                    province_name_o := rowrecorda.den_uts;
+                    year_o := rowrecord.yo;
+                    month_o := rowrecord.mo;
+                    hazard_class_o := 15.0;
+                    count_o := p15;
+                    perc_o := ROUND((p15 * 100.0)/dtot, 2);
+
+                    RETURN NEXT;
+
+                    province_name_o := rowrecorda.den_uts;
+                    year_o := rowrecord.yo;
+                    month_o := rowrecord.mo;
+                    hazard_class_o := 20.0;
+                    count_o := p20;
+                    perc_o := ROUND((p20 * 100.0)/dtot, 2);
+
+                    RETURN NEXT;
+
+
+                END LOOP;
+
+        END LOOP;
+
+END;
+$BODY$;
+
+-- calculate spi conditions over regions from given country and time interval
+CREATE OR REPLACE FUNCTION postgis.calc_spi_stats_over_region(
+    month_in integer,
+    year_in integer,
+    month2_in integer,
+    year2_in integer,
+    spi_type character varying,
+    spi_reclass character varying,
+    country_in character varying,
+    region_in character varying)
+    RETURNS TABLE(region_name_o character varying, year_o integer, month_o integer, hazard_class_o double precision, count_o integer, perc_o double precision)
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+    ROWS 1000
+
+AS $BODY$
+
+DECLARE
+    spirast RASTER;
+
+    rowrecord RECORD;
+    rowrecorda RECORD;
+
+    bandtype varchar := '32BSI';
+    dtot bigint;
+
+
+    m20 integer;
+    m15 integer;
+    m10 integer;
+    m0 integer;
+    p10 integer;
+    p15 integer;
+    p20 integer;
+    dtime1 timestamp;
+    dtime2 timestamp;
+
+BEGIN
+
+    dtime1 := to_timestamp(''||year_in||' '||month_in||' 01','YYYY MM DD');
+    dtime2 := to_timestamp(''||year2_in||' '||(month2_in + 1)||' 01','YYYY MM DD');
+
+    RAISE NOTICE 'Extract spi raster from % to %',dtime1, dtime2;
+
+    FOR rowrecorda IN SELECT regione, reg_boundaries.the_geom
+                      FROM reg_boundaries INNER JOIN eu_boundaries ON eu_boundaries.gid = reg_boundaries.id_eu_boundaries
+                      WHERE lower(name_engl) = country_in AND lower(regione) = region_in
+                      ORDER BY regione
+        LOOP
+            FOR rowrecord IN EXECUTE 'SELECT extract(year from dtime) as yo, extract(month from dtime) as mo, '||
+                                     'postgis.ST_Reclass(postgis.ST_Union(rast),1,$4,$5) as ro '||
+                                     'FROM postgis.'||spi_type||' INNER JOIN postgis.acquisizioni USING (id_acquisizione) ' ||
+                                     'WHERE dtime BETWEEN $2 AND $3 ' ||
+                                     'AND postgis.ST_Intersects(rast,$1) '||
+                                     'GROUP BY 1,2 '||
+                                     'ORDER BY 1,2'
+                USING rowrecorda.the_geom, dtime1, dtime2, spi_reclass, bandtype LOOP
+
+                    spirast := ST_Clip(rowrecord.ro,rowrecorda.the_geom,ST_BandNoDataValue(rowrecord.ro),true);
+
+                    m20 := postgis.ST_ValueCount(spirast,1,true,-20.0);
+                    m15 := postgis.ST_ValueCount(spirast,1,true,-15.0);
+                    m10 := postgis.ST_ValueCount(spirast,1,true,-10.0);
+                    m0 := postgis.ST_ValueCount(spirast,1,true,0.0);
+                    p10 := postgis.ST_ValueCount(spirast,1,true,10.0);
+                    p15 := postgis.ST_ValueCount(spirast,1,true,15.0);
+                    p20 := postgis.ST_ValueCount(spirast,1,true,20.0);
+                    dtot := m20 + m15 + m10 + m0 + p10 + p15 + p20;
+
+                    RAISE NOTICE '% - % % - % % % % % % % - %',rowrecorda.regione,rowrecord.yo,rowrecord.mo,m20,m15,m10,m0,p10,p15,p20,dtot;
+
+                    region_name_o := rowrecorda.regione;
+                    year_o := rowrecord.yo;
+                    month_o := rowrecord.mo;
+                    hazard_class_o := -20.0;
+                    count_o := m20;
+                    perc_o := ROUND((m20 * 100.0)/dtot, 2);
+
+                    RETURN NEXT;
+
+                    region_name_o := rowrecorda.regione;
+                    year_o := rowrecord.yo;
+                    month_o := rowrecord.mo;
+                    hazard_class_o := -15.0;
+                    count_o := m15;
+                    perc_o := ROUND((m15 * 100.0)/dtot, 2);
+
+                    RETURN NEXT;
+
+                    region_name_o := rowrecorda.regione;
+                    year_o := rowrecord.yo;
+                    month_o := rowrecord.mo;
+                    hazard_class_o := -10.0;
+                    count_o := m10;
+                    perc_o := ROUND((m10 * 100.0)/dtot, 2);
+
+                    RETURN NEXT;
+
+                    region_name_o := rowrecorda.regione;
+                    year_o := rowrecord.yo;
+                    month_o := rowrecord.mo;
+                    hazard_class_o := 0.0;
+                    count_o := m0;
+                    perc_o := ROUND((m0 * 100.0)/dtot, 2);
+
+                    RETURN NEXT;
+
+                    region_name_o := rowrecorda.regione;
+                    year_o := rowrecord.yo;
+                    month_o := rowrecord.mo;
+                    hazard_class_o := 10.0;
+                    count_o := p10;
+                    perc_o := ROUND((p10 * 100.0)/dtot, 2);
+
+                    RETURN NEXT;
+
+                    region_name_o := rowrecorda.regione;
+                    year_o := rowrecord.yo;
+                    month_o := rowrecord.mo;
+                    hazard_class_o := 15.0;
+                    count_o := p15;
+                    perc_o := ROUND((p15 * 100.0)/dtot, 2);
+
+                    RETURN NEXT;
+
+                    region_name_o := rowrecorda.regione;
+                    year_o := rowrecord.yo;
+                    month_o := rowrecord.mo;
+                    hazard_class_o := 20.0;
+                    count_o := p20;
+                    perc_o := ROUND((p20 * 100.0)/dtot, 2);
+
+                    RETURN NEXT;
+
+
+                END LOOP;
+
+        END LOOP;
+
+END;
+$BODY$;
+
+
+-- calculate spi stats over provinces with given period and region
+CREATE OR REPLACE FUNCTION postgis.calc_spi_stats_over_prov(
+    month_in integer,
+    year_in integer,
+    month2_in integer,
+    year2_in integer,
+    spi_type character varying,
+    region_in character varying,
+    spi_reclass character varying)
+    RETURNS TABLE(province_name_o character varying, year_o integer, month_o integer, hazard_class_o double precision, count_o integer, perc_o double precision)
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+    ROWS 1000
+
+AS $BODY$
+
+DECLARE
+    spirast RASTER;
+
+    rowrecord RECORD;
+    rowrecorda RECORD;
+
+    bandtype varchar := '32BSI';
+    dtot bigint;
+
+    myear integer;
+    mmonth integer;
+    m20 integer;
+    m15 integer;
+    m10 integer;
+    m0 integer;
+    p10 integer;
+    p15 integer;
+    p20 integer;
+    dtime1 timestamp;
+    dtime2 timestamp;
+
+BEGIN
+
+    dtime1 := to_timestamp(''||year_in||' '||month_in||' 01','YYYY MM DD');
+    dtime2 := to_timestamp(''||year2_in||' '||(month2_in + 1)||' 01','YYYY MM DD');
+
+    RAISE NOTICE 'Extract spi raster from % to %',dtime1, dtime2;
+
+    FOR rowrecorda IN SELECT den_uts, the_geom FROM postgis.provinces WHERE LOWER(regione) = region_in ORDER BY den_uts
+        LOOP
+            FOR rowrecord IN EXECUTE 'SELECT extract(year from dtime) as yo, extract(month from dtime) as mo, '||
+                                     'postgis.ST_Reclass(postgis.ST_Union(rast),1,$4,$5) as ro '||
+                                     'FROM postgis.'||spi_type||' INNER JOIN postgis.acquisizioni USING (id_acquisizione) ' ||
+                                     'WHERE dtime BETWEEN $2 AND $3 ' ||
+                                     'AND postgis.ST_Intersects(rast,$1) '||
+                                     'GROUP BY 1,2 '||
+                                     'ORDER BY 1,2'
+                USING rowrecorda.the_geom, dtime1, dtime2, spi_reclass, bandtype LOOP
+
+                    spirast := ST_Clip(rowrecord.ro,rowrecorda.the_geom,ST_BandNoDataValue(rowrecord.ro),true);
+
+                    m20 := postgis.ST_ValueCount(spirast,1,true,-20.0);
+                    m15 := postgis.ST_ValueCount(spirast,1,true,-15.0);
+                    m10 := postgis.ST_ValueCount(spirast,1,true,-10.0);
+                    m0 := postgis.ST_ValueCount(spirast,1,true,0.0);
+                    p10 := postgis.ST_ValueCount(spirast,1,true,10.0);
+                    p15 := postgis.ST_ValueCount(spirast,1,true,15.0);
+                    p20 := postgis.ST_ValueCount(spirast,1,true,20.0);
+                    dtot := m20 + m15 + m10 + m0 + p10 + p15 + p20;
+
+                    RAISE NOTICE '% - % % - % % % % % % % - %',rowrecorda.den_uts,rowrecord.yo,rowrecord.mo,m20,m15,m10,m0,p10,p15,p20,dtot;
+
+                    province_name_o := rowrecorda.den_uts;
+                    year_o := rowrecord.yo;
+                    month_o := rowrecord.mo;
+                    hazard_class_o := -20.0;
+                    count_o := m20;
+                    perc_o := ROUND((m20 * 100.0)/dtot, 2);
+
+                    RETURN NEXT;
+
+                    province_name_o := rowrecorda.den_uts;
+                    year_o := rowrecord.yo;
+                    month_o := rowrecord.mo;
+                    hazard_class_o := -15.0;
+                    count_o := m15;
+                    perc_o := ROUND((m15 * 100.0)/dtot, 2);
+
+                    RETURN NEXT;
+
+                    province_name_o := rowrecorda.den_uts;
+                    year_o := rowrecord.yo;
+                    month_o := rowrecord.mo;
+                    hazard_class_o := -10.0;
+                    count_o := m10;
+                    perc_o := ROUND((m10 * 100.0)/dtot, 2);
+
+                    RETURN NEXT;
+
+                    province_name_o := rowrecorda.den_uts;
+                    year_o := rowrecord.yo;
+                    month_o := rowrecord.mo;
+                    hazard_class_o := 0.0;
+                    count_o := m0;
+                    perc_o := ROUND((m0 * 100.0)/dtot, 2);
+
+                    RETURN NEXT;
+
+                    province_name_o := rowrecorda.den_uts;
+                    year_o := rowrecord.yo;
+                    month_o := rowrecord.mo;
+                    hazard_class_o := 10.0;
+                    count_o := p10;
+                    perc_o := ROUND((p10 * 100.0)/dtot, 2);
+
+                    RETURN NEXT;
+
+                    province_name_o := rowrecorda.den_uts;
+                    year_o := rowrecord.yo;
+                    month_o := rowrecord.mo;
+                    hazard_class_o := 15.0;
+                    count_o := p15;
+                    perc_o := ROUND((p15 * 100.0)/dtot, 2);
+
+                    RETURN NEXT;
+
+                    province_name_o := rowrecorda.den_uts;
+                    year_o := rowrecord.yo;
+                    month_o := rowrecord.mo;
+                    hazard_class_o := 20.0;
+                    count_o := p20;
+                    perc_o := ROUND((p20 * 100.0)/dtot, 2);
+
+                    RETURN NEXT;
+
+
+                END LOOP;
+
+        END LOOP;
+
+END;
+$BODY$;
+
+
+-- calculate spi stats over province for given month and year
+CREATE OR REPLACE FUNCTION postgis.calc_spi_stats_over_prov(
+    month_in integer,
+    year_in integer,
+    spi_type character varying,
+    region_in character varying,
+    spi_reclass character varying)
+    RETURNS TABLE(province_name_o character varying, hazard_class_o double precision, count_o integer, perc_o double precision)
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+    ROWS 1000
+
+AS $BODY$
+
+DECLARE
+    spirast RASTER;
+
+    rowrecord RECORD;
+    rowrecorda RECORD;
+
+    bandtype varchar := '32BSI';
+    dtot bigint;
+
+    m20 integer;
+    m15 integer;
+    m10 integer;
+    m0 integer;
+    p10 integer;
+    p15 integer;
+    p20 integer;
+
+BEGIN
+    RAISE NOTICE 'Extract spi raster';
+
+    FOR rowrecorda IN SELECT den_uts, the_geom FROM postgis.provinces WHERE LOWER(regione) = region_in ORDER BY den_uts
+        LOOP
+            EXECUTE 'SELECT postgis.ST_Reclass(postgis.ST_Union(rast),1,$4,$5) '||
+                    'FROM postgis.'||spi_type||' INNER JOIN postgis.acquisizioni USING (id_acquisizione) ' ||
+                    'WHERE extract(year from dtime) = $2 ' ||
+                    'AND extract(month from dtime) = $3 ' ||
+                    'AND postgis.ST_Intersects(rast,$1) '
+                USING rowrecorda.the_geom, year_in, month_in, spi_reclass, bandtype INTO spirast;
+
+            spirast := ST_Clip(spirast,rowrecorda.the_geom,ST_BandNoDataValue(spirast),true);
+
+            m20 := postgis.ST_ValueCount(spirast,1,true,-20.0);
+            m15 := postgis.ST_ValueCount(spirast,1,true,-15.0);
+            m10 := postgis.ST_ValueCount(spirast,1,true,-10.0);
+            m0 := postgis.ST_ValueCount(spirast,1,true,0.0);
+            p10 := postgis.ST_ValueCount(spirast,1,true,10.0);
+            p15 := postgis.ST_ValueCount(spirast,1,true,15.0);
+            p20 := postgis.ST_ValueCount(spirast,1,true,20.0);
+            dtot := m20 + m15 + m10 + m0 + p10 + p15 + p20;
+
+            RAISE NOTICE '% - % % % % % % % - %',rowrecorda.den_uts,m20,m15,m10,m0,p10,p15,p20,dtot;
+
+            province_name_o := rowrecorda.den_uts;
+            hazard_class_o := -20.0;
+            count_o := m20;
+            perc_o := ROUND((m20 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+            province_name_o := rowrecorda.den_uts;
+            hazard_class_o := -15.0;
+            count_o := m15;
+            perc_o := ROUND((m15 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+            province_name_o := rowrecorda.den_uts;
+            hazard_class_o := -10.0;
+            count_o := m10;
+            perc_o := ROUND((m10 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+            province_name_o := rowrecorda.den_uts;
+            hazard_class_o := 0.0;
+            count_o := m0;
+            perc_o := ROUND((m0 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+            province_name_o := rowrecorda.den_uts;
+            hazard_class_o := 10.0;
+            count_o := p10;
+            perc_o := ROUND((p10 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+            province_name_o := rowrecorda.den_uts;
+            hazard_class_o := 15.0;
+            count_o := p15;
+            perc_o := ROUND((p15 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+            province_name_o := rowrecorda.den_uts;
+            hazard_class_o := 20.0;
+            count_o := p20;
+            perc_o := ROUND((p20 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+        END LOOP;
+
+END;
+$BODY$;
+
+--calculate spi stats from region
+
+CREATE OR REPLACE FUNCTION postgis.calc_spi_stats_from_region(
+    month_in integer,
+    year_in integer,
+    poly_in geometry,
+    spi_type varchar,
+    spi_reclass varchar
+)
+    RETURNS TABLE (hazard_class_o double precision, count_o integer, perc_o double precision)
+    LANGUAGE 'plpgsql'
+
+    COST 100
+    VOLATILE
+AS $BODY$
+
+DECLARE
+    spirast RASTER;
+
+    rowrecord RECORD;
+
+    bandtype varchar := '32BSI';
+    dstat summarystats;
+BEGIN
+    RAISE NOTICE 'Extract spi raster';
+
+
+
+    EXECUTE 'SELECT postgis.ST_Reclass(postgis.st_clip(postgis.ST_Union(rast),$1,true),1,$4,$5) '||
+            'FROM postgis.'||spi_type||' INNER JOIN postgis.acquisizioni USING (id_acquisizione) ' ||
+            'WHERE extract(year from dtime) = $2 ' ||
+            'AND extract(month from dtime) = $3 ' ||
+            'AND postgis.ST_Intersects(rast,$1) '
+        USING poly_in, year_in, month_in, spi_reclass, bandtype INTO spirast;
+
+    dstat := postgis.st_summarystatsagg(spirast,1,true);
+    RAISE NOTICE 'number of pixels: %',dstat.count;
+
+    FOR rowrecord IN SELECT (pvc).value as val, (pvc).count as c
+                     FROM (SELECT postgis.ST_ValueCount(spirast) as pvc) as foo
+        LOOP
+            hazard_class_o := rowrecord.val;
+            count_o := rowrecord.c;
+            perc_o := (rowrecord.c * 100.0)/dstat.count;
+
+            RETURN NEXT;
+
+        end loop;
+
+
+END;
+$BODY$;
 
 
 CREATE OR REPLACE FUNCTION postgis.calculate_pre_rain_cum(
@@ -598,5 +1301,131 @@ BEGIN
     ELSE
         RAISE NOTICE 'no data';
     END IF;
+END;
+$BODY$;
+
+
+-- extract spi values as pixel polygon collection
+CREATE OR REPLACE FUNCTION postgis.spi_to_vector(
+
+    spi_type_in varchar,
+    bounds_in geometry,
+    dtime1 timestamp,
+    dtime2 timestamp,
+    spi_reclass character varying)
+    RETURNS TABLE(year_o integer, month_o integer, the_geom_o geometry,
+                  val_o double precision)
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+    ROWS 1000
+
+AS $BODY$
+DECLARE
+
+    rowrecord_spi RECORD;
+    rowrecord RECORD;
+
+    bandtype varchar := '32BSI';
+--
+BEGIN
+
+    RAISE NOTICE 'get spi raster';
+
+    FOR rowrecord_spi IN EXECUTE 'SELECT extract(year from dtime) as yo, extract(month from dtime) as mo, '||
+                                 'ST_Clip(ST_Reclass(postgis.ST_Union(rast),1,$4,$5),$1,true) as ro '||
+                                 'FROM postgis.'||spi_type_in||' INNER JOIN postgis.acquisizioni USING (id_acquisizione) ' ||
+                                 'WHERE dtime BETWEEN $2 AND $3 ' ||
+                                 'AND postgis.ST_Intersects(rast,$1) '||
+                                 'GROUP BY 1,2 '||
+                                 'ORDER BY 1,2'
+        USING bounds_in, dtime1, dtime2, spi_reclass, bandtype
+        LOOP
+            RAISE NOTICE 'Elaborating % % - % %',rowrecord_spi.yo, rowrecord_spi.mo,
+                st_width(rowrecord_spi.ro), st_height(rowrecord_spi.ro);
+
+
+            for rowrecord in SELECT ST_Intersection(bounds_in,(foo).gv.geom)  as geom,
+                                    (foo).gv.val as val,
+                                    (foo).gv.x as pixelx,
+                                    (foo).gv.y as pixely
+                             FROM (SELECT postgis.ST_PixelAsPolygons(rowrecord_spi.ro,1,true) as gv  ) as foo
+                             WHERE  (foo).gv.val between -3.0 and 3.0
+                loop
+
+                    the_geom_o := rowrecord.geom;
+                    val_o := rowrecord.val;
+                    year_o := rowrecord_spi.yo;
+                    month_o := rowrecord_spi.mo;
+                    return next;
+                end loop;
+
+        END LOOP;
+
+
+
+END;
+$BODY$;
+
+CREATE OR REPLACE FUNCTION postgis.calc_spi_stats_over_landcover(
+    month_in integer,
+    year_in integer,
+    month2_in integer,
+    year2_in integer,
+    spi_type_in character varying,
+    bounds_in geometry,
+    spi_reclass character varying)
+    RETURNS TABLE(year_oo integer, month_oo integer,
+                  cci_class_o integer, spi_class_o double precision,
+                  n_occurrences integer)
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+    ROWS 1000
+
+AS $BODY$
+DECLARE
+
+    rowrecord_spi RECORD;
+    dtime_now timestamp;
+    dtime1 timestamp;
+    dtime2 timestamp;
+BEGIN
+    --todo: da togliere quando si creera servizio con concorrenza
+    DELETE FROM postgis.spi_cci_temp;
+    dtime_now := current_timestamp;
+    RAISE NOTICE 'begin procedure at %',dtime_now;
+    dtime1 := to_timestamp(''||year_in||' '||month_in||' 01','YYYY MM DD');
+    dtime2 := to_timestamp(''||year2_in||' '||(month2_in + 1)||' 01','YYYY MM DD');
+
+    RAISE NOTICE 'run SPI to Vector func and save results';
+    INSERT INTO postgis.spi_cci_temp
+    (spi_geom, spi_year, spi_month,spi_class,cci_class,dtime)
+    select the_geom_o, year_o, month_o, val_o,null,dtime_now
+    from postgis.spi_to_vector(
+            spi_type_in, bounds_in,
+            dtime1,dtime2, spi_reclass);
+
+    RAISE NOTICE 'start cycle for calculate stats';
+
+    FOR rowrecord_spi IN
+        SELECT bb.dn,aa.spi_class,aa.spi_month, aa.spi_year,  count(*) as npix
+        FROM postgis.spi_cci_temp as aa  join postgis.landcover_cci as bb
+                                              ON ST_intersects(aa.spi_geom,bb.the_geom)
+        WHERE dtime = dtime_now
+        GROUP BY 1,2,3,4
+        ORDER BY 4,3,1,2
+        LOOP
+
+            cci_class_o := rowrecord_spi.dn;
+            spi_class_o := rowrecord_spi.spi_class;
+            year_oo := rowrecord_spi.spi_year;
+            month_oo := rowrecord_spi.spi_month;
+            n_occurrences := rowrecord_spi.npix;
+
+            RETURN NEXT;
+
+        END LOOP;
+
 END;
 $BODY$;

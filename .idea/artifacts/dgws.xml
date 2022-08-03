@@ -33,8 +33,9 @@
           <element id="library" level="project" name="Maven: org.glassfish.jersey.media:jersey-media-multipart:2.26-b03" />
           <element id="library" level="project" name="Maven: org.glassfish.jersey.bundles:jaxrs-ri:2.26-b03" />
           <element id="library" level="project" name="Maven: org.gdal:gdal:2.2.0" />
-          <element id="library" level="project" name="javax.mail:mail:1.4.7" />
           <element id="library" level="project" name="JAX-RS-2.1.1" />
+          <element id="library" level="project" name="javax.mail" />
+          <element id="library" level="project" name="eclipse.ecf.apache.httpcomponents.httpcore" />
           <element id="library" level="project" name="utils-1" />
         </element>
       </element>

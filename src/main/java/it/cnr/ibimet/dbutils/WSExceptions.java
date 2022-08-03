@@ -1,6 +1,6 @@
 package it.cnr.ibimet.dbutils;
 
-import com.sun.javaws.exceptions.ErrorCodeResponseException;
+
 
 public class WSExceptions extends Exception {
     private static final long serialVersionUID = 7718828512143293558L;

@@ -7,11 +7,14 @@ import it.cnr.ibimet.dbutils.TDBManager;
 import it.lr.libs.DBManager;
 
 
+import org.glassfish.jersey.media.multipart.FormDataContentDisposition;
+import org.glassfish.jersey.media.multipart.FormDataParam;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 
 
+import javax.annotation.security.PermitAll;
 import javax.ws.rs.*;
 import javax.ws.rs.core.Application;
 
@@ -20,12 +23,18 @@ import javax.ws.rs.core.Response;
 
 import java.io.*;
 
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
+import java.sql.SQLException;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import java.util.logging.Logger;
+
+import static it.cnr.ibimet.dgws.ReclassConst.SPI_RECLASS_ANALISYS;
+import static it.cnr.ibimet.dgws.ReclassConst.SPI_RECLASS_CCI;
 
 /**
  * Created by lerocchi on 16/02/17.
@@ -1513,6 +1522,766 @@ public class Calculate  extends Application implements SWH4EConst {
         return responseBuilder.build();
 
     }
+
+    /**
+     * calculate SPI condition on over EU for given year and month
+     * @param spi_type - index to be downloaded :
+     *              SPI1
+     *              SPI3
+     *              SPI6
+     *              SPI12
+     *              SPI24
+     * @param year
+     * @param month
+
+     * @return
+     */
+    @GET
+    @Produces(MediaType.TEXT_PLAIN)
+    @Path("/spi_conditions/eu/{spi_type}/{year}/{month}")
+    public Response calcSpiEU(
+                                             @PathParam("spi_type") String spi_type,
+                                             @PathParam("year") String year,
+                                             @PathParam("month") String month){
+
+
+        TDBManager tdb=null;
+        String strOut = "";
+
+        try {
+
+            String sqlString=null;
+
+            logger.info("open connection");
+            tdb = new TDBManager("jdbc/ssdb");
+
+            sqlString = "select * from postgis.calc_spi_stats_over_eu( " +
+                    "?,?,?,'"+SPI_RECLASS_ANALISYS+"')";
+
+
+
+            logger.info(sqlString+" "+spi_type+" "+year+" "+month+" ");
+
+            tdb.setPreparedStatementRef(sqlString);
+            tdb.setParameter(DBManager.ParameterType.INT,month,1);
+            tdb.setParameter(DBManager.ParameterType.INT,year,2);
+            tdb.setParameter(DBManager.ParameterType.STRING,spi_type.toLowerCase(),3);
+
+            tdb.runPreparedQuery();
+
+            strOut = "Country; Classe; Numero Pixels; Percentuale\n";
+            while (tdb.next()) {
+
+                strOut = strOut + tdb.getString(1) + ";" + tdb.getDouble(2) + ";" + tdb.getInteger(3) + ";" + tdb.getDouble(4)+ "\n";
+
+            }
+
+
+
+            logger.info("closing connection");
+            tdb.closeConnection();
+        }catch(Exception e){
+            logger.warning(e.getMessage());
+
+            try{
+                tdb.closeConnection();
+            }catch (Exception ee){
+                logger.warning(ee.getMessage());
+            }
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }
+
+        Response.ResponseBuilder responseBuilder = Response.ok(strOut);
+
+        return responseBuilder.build();
+    }
+
+    /**
+     * calculate SPI condition on region by given country, month and year
+     * @param spi_type - index to be downloaded :
+     *              SPI1
+     *              SPI3
+     *              SPI6
+     *              SPI12
+     *              SPI24
+     * @param year
+     * @param month
+
+     * @return
+     */
+    @GET
+    @Produces(MediaType.TEXT_PLAIN)
+    @Path("/spi_conditions/regions/{country_name}/{spi_type}/{year}/{month}")
+    public Response extractImageFromAllBound(@PathParam("country_name") String country_name,
+                                             @PathParam("spi_type") String spi_type,
+                                           @PathParam("year") String year,
+                                           @PathParam("month") String month){
+
+
+        TDBManager tdb=null;
+        String strOut = "";
+
+        try {
+
+            String sqlString=null;
+
+            logger.info("open connection");
+            tdb = new TDBManager("jdbc/ssdb");
+
+            sqlString = "select * from postgis.calc_spi_stats_over_region( " +
+                    "?,?,?,'"+SPI_RECLASS_ANALISYS+"',?)";
+
+    
+
+            logger.info(sqlString+" "+spi_type+" "+year+" "+month+" ");
+
+            tdb.setPreparedStatementRef(sqlString);
+            tdb.setParameter(DBManager.ParameterType.INT,month,1);
+            tdb.setParameter(DBManager.ParameterType.INT,year,2);
+            tdb.setParameter(DBManager.ParameterType.STRING,spi_type.toLowerCase(),3);
+            tdb.setParameter(DBManager.ParameterType.STRING,country_name.toLowerCase(),4);
+
+            tdb.runPreparedQuery();
+
+            strOut = "Regione; Classe; Numero Pixels; Percentuale\n";
+            while (tdb.next()) {
+
+                strOut = strOut + tdb.getString(1) + ";" + tdb.getDouble(2) + ";" + tdb.getInteger(3) + ";" + tdb.getDouble(4)+ "\n";
+
+            }
+
+
+
+            logger.info("closing connection");
+            tdb.closeConnection();
+        }catch(Exception e){
+            logger.warning(e.getMessage());
+
+            try{
+                tdb.closeConnection();
+            }catch (Exception ee){
+                logger.warning(ee.getMessage());
+            }
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }
+
+        Response.ResponseBuilder responseBuilder = Response.ok(strOut);
+
+        return responseBuilder.build();
+    }
+
+
+    /**
+     * calculate SPI condition over provinces
+     * @param spi_type - index to be downloaded :
+     *              SPI1
+     *              SPI3
+     *              SPI6
+     *              SPI12
+     *              SPI24
+     * @param year
+     * @param month
+
+     * @return
+     */
+    @GET
+    @Produces(MediaType.TEXT_PLAIN)
+    @Path("/spi_conditions/provinces/{spi_type}/{region}/{year}/{month}")
+    public Response spi_cond_over_provinces(@PathParam("spi_type") String spi_type,
+                                            @PathParam("region") String region,
+                                             @PathParam("year") String year,
+                                             @PathParam("month") String month){
+
+
+        TDBManager tdb=null;
+        String strOut = "";
+
+        try {
+
+            String sqlString=null;
+
+            logger.info("open connection");
+            tdb = new TDBManager("jdbc/ssdb");
+
+            sqlString = "select * from postgis.calc_spi_stats_over_prov( " +
+                    "?,?,?,?,'"+SPI_RECLASS_ANALISYS+"')";
+
+
+
+            logger.info(sqlString+" "+spi_type+" "+year+" "+month+" ");
+
+            tdb.setPreparedStatementRef(sqlString);
+            tdb.setParameter(DBManager.ParameterType.INT,month,1);
+            tdb.setParameter(DBManager.ParameterType.INT,year,2);
+            tdb.setParameter(DBManager.ParameterType.STRING,spi_type,4);
+            tdb.setParameter(DBManager.ParameterType.STRING,region.toLowerCase(),3);
+
+            tdb.runPreparedQuery();
+
+            strOut = "Provincia; Classe; Numero Pixels; Percentuale\n";
+            while (tdb.next()) {
+
+                strOut = strOut + tdb.getString(1) + ";" + tdb.getDouble(2) + ";" + tdb.getInteger(3) + ";" + tdb.getDouble(4)+ "\n";
+
+            }
+
+
+
+            logger.info("closing connection");
+            tdb.closeConnection();
+        }catch(Exception e){
+            logger.warning(e.getMessage());
+
+            try{
+                tdb.closeConnection();
+            }catch (Exception ee){
+                logger.warning(ee.getMessage());
+            }
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }
+
+        Response.ResponseBuilder responseBuilder = Response.ok(strOut);
+
+        return responseBuilder.build();
+    }
+
+    /**
+     * calculate SPI condition over CCI for given EU country
+     * @param spi_type - index to be downloaded :
+     *              SPI1
+     *              SPI3
+     *              SPI6
+     *              SPI12
+     *              SPI24
+     * @param year
+     * @param month
+
+     * @return
+     */
+    @GET
+    @Produces(MediaType.TEXT_PLAIN)
+    @Path("/spi_conditions/cci/eu/{country_name}/{spi_type}/{year}/{month}/{year2}/{month2}")
+    public Response spi_cond_over_cci_eu(@PathParam("country_name") String country_name,
+                                            @PathParam("spi_type") String spi_type,
+                                            @PathParam("year") String year,
+                                            @PathParam("month") String month,
+                                            @PathParam("year2") String year2,
+                                            @PathParam("month2") String month2){
+
+
+        TDBManager tdb=null;
+        String strOut = "";
+
+        try {
+
+            String sqlString=null;
+
+            logger.info("open connection");
+            tdb = new TDBManager("jdbc/ssdb");
+
+            sqlString = "select * from postgis.calc_spi_stats_over_landcover( " +
+                    "?,?,?,?,?," +
+                    "(select the_geom from postgis.eu_boundaries where lower(name_engl) = ?),'"+SPI_RECLASS_CCI+"')";
+
+            logger.info(sqlString+" "+spi_type+" "+year+" "+month+" ");
+
+            tdb.setPreparedStatementRef(sqlString);
+            tdb.setParameter(DBManager.ParameterType.INT,month,1);
+            tdb.setParameter(DBManager.ParameterType.INT,year,2);
+            tdb.setParameter(DBManager.ParameterType.INT,month2,3);
+            tdb.setParameter(DBManager.ParameterType.INT,year2,4);
+            tdb.setParameter(DBManager.ParameterType.STRING,spi_type,5);
+            tdb.setParameter(DBManager.ParameterType.STRING,country_name.toLowerCase(),6);
+
+            tdb.runPreparedQuery();
+
+            strOut = "YEAR; MONTH; CCI_CLASS; SPI_CLASS; OCCURRENCES; \n";
+            while (tdb.next()) {
+
+                strOut = strOut + tdb.getInteger(1) + ";" + tdb.getInteger(2) + ";" +
+                        tdb.getInteger(3) + ";" + tdb.getDouble(4) + ";" +
+                        tdb.getDouble(5) +"\n";
+
+            }
+
+            logger.info("closing connection");
+            tdb.closeConnection();
+        }catch(Exception e){
+            logger.warning(e.getMessage());
+
+            try{
+                tdb.closeConnection();
+            }catch (Exception ee){
+                logger.warning(ee.getMessage());
+            }
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }
+
+        Response.ResponseBuilder responseBuilder = Response.ok(strOut);
+
+        return responseBuilder.build();
+    }
+
+    /**
+     * calculate SPI condition over CCI for given EU country
+     * @param spi_type - index to be downloaded :
+     *              SPI1
+     *              SPI3
+     *              SPI6
+     *              SPI12
+     *              SPI24
+     * @param year
+     * @param month
+
+     * @return
+     */
+    @GET
+    @Produces(MediaType.TEXT_PLAIN)
+    @Path("/spi_conditions/cci/regions/{region_name}/{spi_type}/{year}/{month}/{year2}/{month2}")
+    public Response spi_cond_over_cci_region(@PathParam("region_name") String region_name,
+                                            @PathParam("spi_type") String spi_type,
+                                            @PathParam("year") String year,
+                                            @PathParam("month") String month,
+                                            @PathParam("year2") String year2,
+                                            @PathParam("month2") String month2){
+
+
+        TDBManager tdb=null;
+        String strOut = "";
+
+        try {
+
+            String sqlString=null;
+
+            logger.info("open connection");
+            tdb = new TDBManager("jdbc/ssdb");
+
+            sqlString = "select * from postgis.calc_spi_stats_over_landcover( " +
+                    "?,?,?,?,?," +
+                    "(select the_geom from postgis.reg_boundaries where lower(regione) = ?),'"+SPI_RECLASS_CCI+"')";
+
+            logger.info(sqlString+" "+spi_type+" "+year+" "+month+" ");
+
+            tdb.setPreparedStatementRef(sqlString);
+            tdb.setParameter(DBManager.ParameterType.INT,month,1);
+            tdb.setParameter(DBManager.ParameterType.INT,year,2);
+            tdb.setParameter(DBManager.ParameterType.INT,month2,3);
+            tdb.setParameter(DBManager.ParameterType.INT,year2,4);
+            tdb.setParameter(DBManager.ParameterType.STRING,spi_type,5);
+            tdb.setParameter(DBManager.ParameterType.STRING,region_name.toLowerCase(),6);
+
+            tdb.runPreparedQuery();
+
+            strOut = "YEAR; MONTH; CCI_CLASS; SPI_CLASS; OCCURRENCES; \n";
+            while (tdb.next()) {
+
+                strOut = strOut + tdb.getInteger(1) + ";" + tdb.getInteger(2) + ";" +
+                        tdb.getInteger(3) + ";" + tdb.getDouble(4) + ";" +
+                        tdb.getDouble(5) +"\n";
+
+            }
+
+            logger.info("closing connection");
+            tdb.closeConnection();
+        }catch(Exception e){
+            logger.warning(e.getMessage());
+
+            try{
+                tdb.closeConnection();
+            }catch (Exception ee){
+                logger.warning(ee.getMessage());
+            }
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }
+
+        Response.ResponseBuilder responseBuilder = Response.ok(strOut);
+
+        return responseBuilder.build();
+    }
+
+    /**
+     * calculate SPI condition over EU countries from given time interval
+     * @param spi_type - index to be downloaded :
+     *              SPI1
+     *              SPI3
+     *              SPI6
+     *              SPI12
+     *              SPI24
+     * @param year
+     * @param month
+
+     * @return
+     */
+    @GET
+    @Produces(MediaType.TEXT_PLAIN)
+    @Path("/spi_conditions/eu/{country}/{spi_type}/{year}/{month}/{year2}/{month2}")
+    public Response calcSpiEU2(@PathParam("country") String country,
+                                             @PathParam("spi_type") String spi_type,
+                                             @PathParam("year") String year,
+                                             @PathParam("month") String month,
+                                             @PathParam("year2") String year2,
+                                             @PathParam("month2") String month2){
+
+
+        TDBManager tdb=null;
+        String strOut = "";
+
+        try {
+
+            String sqlString=null;
+
+            logger.info("open connection");
+            tdb = new TDBManager("jdbc/ssdb");
+
+            sqlString = "select * from postgis.calc_spi_stats_over_eu( " +
+                    "?,?,?,?,?,'"+SPI_RECLASS_ANALISYS+"',?)";
+
+
+
+            logger.info(sqlString+" "+spi_type+" "+year+" "+month+" ");
+
+            tdb.setPreparedStatementRef(sqlString);
+            tdb.setParameter(DBManager.ParameterType.INT,month,1);
+            tdb.setParameter(DBManager.ParameterType.INT,year,2);
+            tdb.setParameter(DBManager.ParameterType.INT,month2,3);
+            tdb.setParameter(DBManager.ParameterType.INT,year2,4);
+            tdb.setParameter(DBManager.ParameterType.STRING,spi_type.toLowerCase(),5);
+            tdb.setParameter(DBManager.ParameterType.STRING,country.toLowerCase(),6);
+
+            tdb.runPreparedQuery();
+
+            strOut = "Country; Anno; Mese; Classe; Numero Pixels; Percentuale\n";
+            while (tdb.next()) {
+
+                strOut = strOut + tdb.getString(1) +";" + tdb.getInteger(2) +
+                        ";" + tdb.getInteger(3) +
+                        ";" + tdb.getDouble(4) + ";" + tdb.getInteger(5) + ";" + tdb.getDouble(6)+ "\n";
+
+            }
+
+            logger.info("closing connection");
+            tdb.closeConnection();
+        }catch(Exception e){
+            logger.warning(e.getMessage());
+
+            try{
+                tdb.closeConnection();
+            }catch (Exception ee){
+                logger.warning(ee.getMessage());
+            }
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }
+
+        Response.ResponseBuilder responseBuilder = Response.ok(strOut);
+
+        return responseBuilder.build();
+    }
+
+    /**
+     * calculate SPI condition on regions in given period
+     * @param spi_type - index to be downloaded :
+     *              SPI1
+     *              SPI3
+     *              SPI6
+     *              SPI12
+     *              SPI24
+     * @param year
+     * @param month
+
+     * @return
+     */
+    @GET
+    @Produces(MediaType.TEXT_PLAIN)
+    @Path("/spi_conditions/regions/{country_name}/{region_name}/{spi_type}/{year}/{month}/{year2}/{month2}")
+    public Response extractImageFromAllBound(@PathParam("region_name") String region_name,
+                                             @PathParam("country_name") String country_name,
+                                             @PathParam("spi_type") String spi_type,
+                                             @PathParam("year") String year,
+                                             @PathParam("month") String month,
+                                             @PathParam("year2") String year2,
+                                             @PathParam("month2") String month2){
+
+
+        TDBManager tdb=null;
+        String strOut = "";
+
+        try {
+
+            String sqlString=null;
+
+            logger.info("open connection");
+            tdb = new TDBManager("jdbc/ssdb");
+
+            sqlString = "select * from postgis.calc_spi_stats_over_region( " +
+                    "?,?,?,?,?,'"+SPI_RECLASS_ANALISYS+"',?,?)";
+
+
+
+            logger.info(sqlString+" "+spi_type+" "+year+" "+month+" ");
+
+            tdb.setPreparedStatementRef(sqlString);
+            tdb.setParameter(DBManager.ParameterType.INT,month,1);
+            tdb.setParameter(DBManager.ParameterType.INT,year,2);
+            tdb.setParameter(DBManager.ParameterType.INT,month2,3);
+            tdb.setParameter(DBManager.ParameterType.INT,year2,4);
+            tdb.setParameter(DBManager.ParameterType.STRING,spi_type.toLowerCase(),5);
+            tdb.setParameter(DBManager.ParameterType.STRING,country_name.toLowerCase(),6);
+            tdb.setParameter(DBManager.ParameterType.STRING,region_name.toLowerCase(),7);
+
+            tdb.runPreparedQuery();
+
+            strOut = "Regione; Anno; Mese; Classe; Numero Pixels; Percentuale\n";
+            while (tdb.next()) {
+
+                strOut = strOut + tdb.getString(1) +";" + tdb.getInteger(2) +
+                        ";" + tdb.getInteger(3) +
+                        ";" + tdb.getDouble(4) + ";" + tdb.getInteger(5) + ";" + tdb.getDouble(6)+ "\n";
+
+            }
+
+            logger.info("closing connection");
+            tdb.closeConnection();
+        }catch(Exception e){
+            logger.warning(e.getMessage());
+
+            try{
+                tdb.closeConnection();
+            }catch (Exception ee){
+                logger.warning(ee.getMessage());
+            }
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }
+
+        Response.ResponseBuilder responseBuilder = Response.ok(strOut);
+
+        return responseBuilder.build();
+    }
+
+
+    /**
+     * calculate SPI condition on regions in given period
+     * @param spi_type - index to be downloaded :
+     *              SPI1
+     *              SPI3
+     *              SPI6
+     *              SPI12
+     *              SPI24
+     * @param year
+     * @param month
+
+     * @return
+     */
+    @GET
+    @Produces(MediaType.TEXT_PLAIN)
+    @Path("/spi_conditions/provinces/{spi_type}/{region}/{year}/{month}/{year2}/{month2}")
+    public Response spi_cond_prov(@PathParam("spi_type") String spi_type,
+                                  @PathParam("region") String region,
+                                             @PathParam("year") String year,
+                                             @PathParam("month") String month,
+                                             @PathParam("year2") String year2,
+                                             @PathParam("month2") String month2){
+
+
+        TDBManager tdb=null;
+        String strOut = "";
+
+        try {
+
+            String sqlString=null;
+
+            logger.info("open connection");
+            tdb = new TDBManager("jdbc/ssdb");
+
+            sqlString = "select * from postgis.calc_spi_stats_over_prov( " +
+                    "?,?,?,?,?,?,'"+SPI_RECLASS_ANALISYS+"')";
+
+
+
+            logger.info(sqlString+" "+spi_type+" "+year+" "+month+" ");
+
+            tdb.setPreparedStatementRef(sqlString);
+            tdb.setParameter(DBManager.ParameterType.INT,month,1);
+            tdb.setParameter(DBManager.ParameterType.INT,year,2);
+            tdb.setParameter(DBManager.ParameterType.INT,month2,3);
+            tdb.setParameter(DBManager.ParameterType.INT,year2,4);
+            tdb.setParameter(DBManager.ParameterType.STRING,spi_type,6);
+            tdb.setParameter(DBManager.ParameterType.STRING,region,5);
+
+            tdb.runPreparedQuery();
+
+            strOut = "Provincia; Anno; Mese; Classe; Numero Pixels; Percentuale\n";
+            while (tdb.next()) {
+
+                strOut = strOut + tdb.getString(1) +";" + tdb.getInteger(2) +
+                        ";" + tdb.getInteger(3) +
+                        ";" + tdb.getDouble(4) + ";" + tdb.getInteger(5) + ";" + tdb.getDouble(6)+ "\n";
+
+            }
+
+            logger.info("closing connection");
+            tdb.closeConnection();
+        }catch(Exception e){
+            logger.warning(e.getMessage());
+
+            try{
+                tdb.closeConnection();
+            }catch (Exception ee){
+                logger.warning(ee.getMessage());
+            }
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }
+
+        Response.ResponseBuilder responseBuilder = Response.ok(strOut);
+
+        return responseBuilder.build();
+    }
+
+
+    /**
+     * method for uploading file to GeoDB
+     *
+     * @param fileInputStream   - file input stream
+     * @param contentDispositionHeader -- header
+     * @param day - doy
+     * @param month - month
+     * @param year - year
+     * @return response
+     */
+
+    @POST
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
+    @Path("/j_ndvi_up")
+    @PermitAll
+    public Response upload(@FormDataParam("file") InputStream fileInputStream,
+                           @FormDataParam("file") FormDataContentDisposition contentDispositionHeader,
+                           @FormDataParam("day") String day,
+                           @FormDataParam("month") String month,
+                           @FormDataParam("year") String year){
+
+        TDBManager tdb=null;
+        String tblname="";
+
+        try{
+
+
+
+            tdb = new TDBManager("jdbc/ssdb");
+
+
+
+
+
+            File file = File.createTempFile("rasterfile", ".nc");
+
+
+
+            logger.info("Building temp file "+file.toPath()+"...");
+
+            Files.copy(fileInputStream, file.toPath(), StandardCopyOption.REPLACE_EXISTING);
+
+
+            logger.info("/usr/bin/importraster.sh" + " " + file.getAbsolutePath() + " ndvi" );
+
+            tblname="ndvi";
+
+
+            ProcessBuilder builder = new ProcessBuilder("/usr/bin/importraster.sh", "" + file.getAbsolutePath(), tblname);
+            final Process process = builder.start();
+
+
+
+
+            InputStream is = process.getInputStream();
+            InputStreamReader isr = new InputStreamReader(is);
+            BufferedReader br = new BufferedReader(isr);
+            String line;
+
+            InputStream is1 = process.getErrorStream();
+            InputStreamReader isr1 = new InputStreamReader(is1);
+            BufferedReader br1 = new BufferedReader(isr1);
+            String line1;
+
+
+
+
+            while ((line = br.readLine()) != null) {
+
+
+                System.out.println(line);
+            }
+
+            while ((line1 = br1.readLine()) != null) {
+
+
+                System.out.println(line1);
+            }
+
+
+
+            String sqlString;
+
+
+            logger.info("update raster table...");
+
+            if(Integer.parseInt(month) < 10){
+                month = "0"+month;
+            }
+
+            if(Integer.parseInt(day) < 10){
+                day = "0"+day;
+            }
+
+            sqlString = "select from postgis.import_ndvi_images('"+year+"','"+month+"','"+day+"')";
+
+            tdb.setPreparedStatementRef(sqlString);
+
+            tdb.runPreparedQuery();
+
+            if(tdb.next()){
+                System.out.println("done.");
+            }
+
+
+            logger.info("deleting tem file...");
+            file.delete();
+            logger.info("done.");
+
+
+
+
+            return Response.status(200).entity("Image saved!").build();
+
+        }catch(Exception e){
+            logger.warning(e.getMessage());
+
+            try {
+                assert tdb != null;
+                tdb.setPreparedStatementRef("drop table "+tblname);
+                tdb.performInsert();
+            } catch (SQLException e1) {
+                e1.printStackTrace();
+            }
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }finally {
+            try{
+                assert tdb != null;
+                tdb.closeConnection();
+            }catch (Exception e){
+                logger.warning(e.getMessage());
+            }
+        }
+    }
+
+
 
     private static class StreamGobbler implements Runnable {
         private InputStream inputStream;
