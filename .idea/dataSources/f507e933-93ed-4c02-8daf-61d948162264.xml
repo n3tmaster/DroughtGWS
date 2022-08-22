@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <dataSource name="PostgreSQL - gisdb@149.139.16.84">
-  <database-model serializer="dbm" dbms="POSTGRES" family-id="POSTGRES" format-version="4.41">
+  <database-model serializer="dbm" dbms="POSTGRES" family-id="POSTGRES" format-version="4.43">
     <root id="1"/>
     <database id="2" parent="1" name="gisdb">
       <Current>1</Current>
@@ -3849,12 +3849,13 @@ sequence|table|96409716|96409718|1
       <StateNumber>351</StateNumber>
       <OwnerName>postgres</OwnerName>
     </schema>
-    <server id="286" parent="275" name="agrosat_server">
+    <server id="286" parent="2" name="agrosat_server">
       <ObjectId>83004550</ObjectId>
       <Options>host=149.139.16.54
 dbname=gisdb
 port=5432</Options>
       <StateNumber>610345</StateNumber>
+      <ForeignDataWrapperId>275</ForeignDataWrapperId>
       <OwnerName>postgres</OwnerName>
     </server>
     <aggregate id="287" parent="284" name="st_3dextent">

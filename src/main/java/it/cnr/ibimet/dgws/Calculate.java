@@ -20,6 +20,7 @@ import javax.ws.rs.core.Application;
 
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.StreamingOutput;
 
 import java.io.*;
 
@@ -34,7 +35,7 @@ import java.util.function.Consumer;
 import java.util.logging.Logger;
 
 import static it.cnr.ibimet.dgws.ReclassConst.SPI_RECLASS_ANALISYS;
-import static it.cnr.ibimet.dgws.ReclassConst.SPI_RECLASS_CCI;
+
 
 /**
  * Created by lerocchi on 16/02/17.
@@ -1599,6 +1600,166 @@ public class Calculate  extends Application implements SWH4EConst {
 
     /**
      * calculate SPI condition on region by given country, month and year
+     * and produces shape file with results
+     * @param spi_type - index to be downloaded :
+     *              SPI1
+     *              SPI3
+     *              SPI6
+     *              SPI12
+     *              SPI24
+     * @param year
+     * @param month
+
+     * @return
+     */
+    @GET
+    @Produces(MediaType.APPLICATION_OCTET_STREAM)
+    @Path("/spi_conditions/shp/regions/{country_name}/{spi_type}/{year}/{month}")
+    public Response calcSpiCond4Shp(@PathParam("country_name") String country_name,
+                                             @PathParam("spi_type") String spi_type,
+                                             @PathParam("year") String year,
+                                             @PathParam("month") String month){
+
+
+        TDBManager tdb=null;
+        String strOut = "";
+        int dtime_millisecond = -1;
+
+        ProcessBuilder builder = null;
+        ByteArrayOutputStream is;
+        Process process = null;
+        StreamGobbler streamGobbler;
+        int exitCode;
+        File fileout;
+        try {
+
+            String sqlString=null;
+
+            logger.info("open connection");
+            tdb = new TDBManager("jdbc/ssdb");
+
+
+            sqlString = "select extract(millisecond from current_time)";
+            tdb.setPreparedStatementRef(sqlString);
+
+            tdb.runPreparedQuery();
+
+            if (tdb.next()) {
+
+                logger.info("millisecond " + tdb.getInteger(1));
+                dtime_millisecond = tdb.getInteger(1);
+                sqlString = "insert into postgis.spi_cond_temp " +
+                        "(spi_geom, spi_type, spi_class, n_pixels, perc, dtime, region_name) " +
+                        "select the_geom_o, ?, hazard_class_o, count_o, perc_o, ?, region_name_o " +
+                        "from postgis.calc_spi_stats_over_region4shp( " +
+                        "?,?,?,'"+SPI_RECLASS_ANALISYS+"',?)";
+
+                logger.info(sqlString+" "+spi_type+" "+year+" "+month+" ");
+
+                tdb.setPreparedStatementRef(sqlString);
+                tdb.setParameter(DBManager.ParameterType.STRING,spi_type.toLowerCase(),1);
+                tdb.setParameter(DBManager.ParameterType.INT,""+dtime_millisecond,2);
+                tdb.setParameter(DBManager.ParameterType.INT,month,3);
+                tdb.setParameter(DBManager.ParameterType.INT,year,4);
+                tdb.setParameter(DBManager.ParameterType.STRING,spi_type.toLowerCase(),5);
+                tdb.setParameter(DBManager.ParameterType.STRING,country_name.toLowerCase(),6);
+
+                tdb.performInsert();
+
+                logger.info("launch script for shape creation");
+
+                logger.info("query done");
+
+                builder = new ProcessBuilder();
+                builder.command("/usr/bin/create_shpout3_spi_cond.sh", spi_type+"_cond_" + dtime_millisecond, "" + dtime_millisecond);
+
+                logger.info("Starting Polygonize porcedure...");
+                process = builder.start();
+
+                streamGobbler =
+                        new StreamGobbler(process.getInputStream(), System.out::println);
+                Executors.newSingleThreadExecutor().submit(streamGobbler);
+
+                exitCode = process.waitFor();
+                assert exitCode == 0;
+
+                logger.info("Reading shape from " + System.getProperty("java.io.tmpdir"));
+                fileout = new File(System.getProperty("java.io.tmpdir") +  "/" + spi_type+"_cond_" + dtime_millisecond+ ".zip");
+
+                builder.command("rm_shpout.sh", spi_type+"_cond_" + dtime_millisecond );
+
+                logger.info("deleting files");
+                process = builder.start();
+
+                streamGobbler =
+                        new StreamGobbler(process.getInputStream(), System.out::println);
+                Executors.newSingleThreadExecutor().submit(streamGobbler);
+
+                exitCode = process.waitFor();
+                assert exitCode == 0;
+
+                logger.info("cleaning spi_cond_temp");
+
+                sqlString = "DELETE FROM postgis.spi_cond_temp WHERE dtime = " + dtime_millisecond;
+                logger.info(sqlString);
+
+                tdb.setPreparedStatementRef(sqlString);
+                tdb.performInsert();
+
+                return Response.ok().entity(new StreamingOutput() {
+                    @Override
+                    public void write(final OutputStream output) throws IOException, WebApplicationException {
+                        try {
+                            Files.copy(fileout.toPath(), output);
+                        } finally {
+                            logger.info("spi_cond delete file");
+                            Files.delete(fileout.toPath());
+                        }
+                    }
+                }).header("Content-Disposition", "attachment; filename=\"" + spi_type+"_cond_" + dtime_millisecond + ".zip\"").build();
+
+
+            }else{
+                logger.info("unknown error from getting current timestamp");
+                return Response.noContent().build();
+            }
+
+        }catch (Exception e) {
+            logger.warning(e.getMessage());
+            try {
+                logger.warning("cleaning shape_out3");
+
+                logger.warning("DELETE FROM postgis.spi_cond_temp WHERE dtime = " + dtime_millisecond);
+
+                tdb.setPreparedStatementRef("DELETE FROM postgis.spi_cond_temp WHERE dtime = " + dtime_millisecond);
+                tdb.performInsert();
+
+            } catch (Exception ee) {
+                logger.warning(ee.getMessage());
+            }
+            try {
+
+                logger.warning("closing connection");
+                tdb.closeConnection();
+            } catch (Exception ee) {
+                logger.warning(ee.getMessage());
+            }
+
+            return Response.status(500).entity(e.getMessage()).build();
+        } finally {
+
+            logger.info("SPI_COND finally closing connection");
+            try {
+                tdb.closeConnection();
+            } catch (SQLException throwables) {
+                throwables.printStackTrace();
+            }
+        }
+    }
+
+
+    /**
+     * calculate SPI condition on region by given country, month and year
      * @param spi_type - index to be downloaded :
      *              SPI1
      *              SPI3
@@ -1784,7 +1945,7 @@ public class Calculate  extends Application implements SWH4EConst {
 
             sqlString = "select * from postgis.calc_spi_stats_over_landcover( " +
                     "?,?,?,?,?," +
-                    "(select the_geom from postgis.eu_boundaries where lower(name_engl) = ?),'"+SPI_RECLASS_CCI+"')";
+                    "(select the_geom from postgis.eu_boundaries where lower(name_engl) = ?),'"+SPI_RECLASS_ANALISYS+"')";
 
             logger.info(sqlString+" "+spi_type+" "+year+" "+month+" ");
 
@@ -1862,7 +2023,7 @@ public class Calculate  extends Application implements SWH4EConst {
 
             sqlString = "select * from postgis.calc_spi_stats_over_landcover( " +
                     "?,?,?,?,?," +
-                    "(select the_geom from postgis.reg_boundaries where lower(regione) = ?),'"+SPI_RECLASS_CCI+"')";
+                    "(select the_geom from postgis.reg_boundaries where lower(regione) = ?),'"+SPI_RECLASS_ANALISYS+"')";
 
             logger.info(sqlString+" "+spi_type+" "+year+" "+month+" ");
 
@@ -1903,6 +2064,148 @@ public class Calculate  extends Application implements SWH4EConst {
 
         return responseBuilder.build();
     }
+
+    /**
+     * calculate SPI condition over EU countries from given time interval
+     * @param year
+     * @param month
+
+     * @return
+     */
+    @GET
+    @Produces(MediaType.TEXT_PLAIN)
+    @Path("/lst_conditions/eu/{year}/{month}/{year2}/{month2}")
+    public Response calcLSTEU2(
+                               @PathParam("year") String year,
+                               @PathParam("month") String month,
+                               @PathParam("year2") String year2,
+                               @PathParam("month2") String month2){
+
+
+        TDBManager tdb=null;
+        String strOut = "";
+
+        try {
+
+            String sqlString=null;
+
+            logger.info("open connection");
+            tdb = new TDBManager("jdbc/ssdb");
+
+            sqlString = "select * from postgis.calc_lst_stats_over_eu( " +
+                    "?,?,?,?)";
+
+
+
+
+
+            tdb.setPreparedStatementRef(sqlString);
+            tdb.setParameter(DBManager.ParameterType.INT,month,1);
+            tdb.setParameter(DBManager.ParameterType.INT,year,2);
+            tdb.setParameter(DBManager.ParameterType.INT,month2,3);
+            tdb.setParameter(DBManager.ParameterType.INT,year2,4);
+
+            tdb.runPreparedQuery();
+
+            strOut = "Country; Anno; Mese; Giorno; Min; Max; Mean; StdDev\n";
+            while (tdb.next()) {
+
+                strOut = strOut + tdb.getString(1) +";" + tdb.getInteger(2) +
+                        ";" + tdb.getInteger(3) + ";" + tdb.getInteger(4) +
+                        ";" + tdb.getDouble(5) + ";" + tdb.getDouble(6) + ";"+ tdb.getDouble(7) + ";" + tdb.getDouble(8)+ "\n";
+
+            }
+
+            logger.info("closing connection");
+            tdb.closeConnection();
+        }catch(Exception e){
+            logger.warning(e.getMessage());
+
+            try{
+                tdb.closeConnection();
+            }catch (Exception ee){
+                logger.warning(ee.getMessage());
+            }
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }
+
+        Response.ResponseBuilder responseBuilder = Response.ok(strOut);
+
+        return responseBuilder.build();
+    }
+
+    /**
+     * calculate SPI condition over EU countries from given time interval
+     * @param year
+     * @param month
+
+     * @return
+     */
+    @GET
+    @Produces(MediaType.TEXT_PLAIN)
+    @Path("/lst_conditions/regions/{country_name}/{year}/{month}/{year2}/{month2}")
+    public Response calcLSTRegion(@PathParam("country_name") String country_name,
+            @PathParam("year") String year,
+            @PathParam("month") String month,
+            @PathParam("year2") String year2,
+            @PathParam("month2") String month2){
+
+
+        TDBManager tdb=null;
+        String strOut = "";
+
+        try {
+
+            String sqlString=null;
+
+            logger.info("open connection");
+            tdb = new TDBManager("jdbc/ssdb");
+
+            sqlString = "select * from postgis.calc_lst_stats_over_regions( " +
+                    "?,?,?,?,?)";
+
+
+
+
+
+            tdb.setPreparedStatementRef(sqlString);
+            tdb.setParameter(DBManager.ParameterType.INT,month,1);
+            tdb.setParameter(DBManager.ParameterType.INT,year,2);
+            tdb.setParameter(DBManager.ParameterType.INT,month2,3);
+            tdb.setParameter(DBManager.ParameterType.INT,year2,4);
+            tdb.setParameter(DBManager.ParameterType.STRING,country_name,5);
+
+            tdb.runPreparedQuery();
+
+            strOut = "Regione; Anno; Mese; Giorno; Min; Max; Mean; StdDev\n";
+            while (tdb.next()) {
+
+                strOut = strOut + tdb.getString(1) +";" + tdb.getInteger(2) +
+                        ";" + tdb.getInteger(3) + ";" + tdb.getInteger(4) +
+                        ";" + tdb.getDouble(5) + ";" + tdb.getDouble(6) + ";"+ tdb.getDouble(7) + ";" + tdb.getDouble(8)+ "\n";
+
+            }
+
+            logger.info("closing connection");
+            tdb.closeConnection();
+        }catch(Exception e){
+            logger.warning(e.getMessage());
+
+            try{
+                tdb.closeConnection();
+            }catch (Exception ee){
+                logger.warning(ee.getMessage());
+            }
+
+            return Response.status(500).entity(e.getMessage()).build();
+        }
+
+        Response.ResponseBuilder responseBuilder = Response.ok(strOut);
+
+        return responseBuilder.build();
+    }
+
 
     /**
      * calculate SPI condition over EU countries from given time interval

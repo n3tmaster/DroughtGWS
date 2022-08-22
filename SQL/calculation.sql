@@ -163,6 +163,237 @@ BEGIN
 END;
 $BODY$;
 
+CREATE OR REPLACE FUNCTION postgis.calc_spi_stats_over_region4shp(
+    month_in integer,
+    year_in integer,
+    spi_type character varying,
+    spi_reclass character varying,
+    country_in character varying)
+    RETURNS TABLE(the_geom_o geometry, region_name_o character varying, hazard_class_o double precision, count_o integer, perc_o double precision)
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+    ROWS 1000
+
+AS $BODY$
+
+DECLARE
+    spirast RASTER;
+
+    rowrecord RECORD;
+    rowrecorda RECORD;
+
+    bandtype varchar := '32BSI';
+    dtot bigint;
+
+    m20 integer;
+    m15 integer;
+    m10 integer;
+    m0 integer;
+    p10 integer;
+    p15 integer;
+    p20 integer;
+
+BEGIN
+    RAISE NOTICE 'Extract spi raster';
+
+    FOR rowrecorda IN SELECT regione, reg_boundaries.the_geom as the_geom FROM postgis.reg_boundaries
+                                                                                   INNER JOIN postgis.eu_boundaries ON eu_boundaries.gid = reg_boundaries.id_eu_boundaries
+                      WHERE lower(name_engl) = country_in
+                      ORDER BY regione
+        LOOP
+            EXECUTE 'SELECT postgis.ST_Reclass(postgis.ST_Union(rast),1,$4,$5) '||
+                    'FROM postgis.'||spi_type||' INNER JOIN postgis.acquisizioni USING (id_acquisizione) ' ||
+                    'WHERE extract(year from dtime) = $2 ' ||
+                    'AND extract(month from dtime) = $3 ' ||
+                    'AND postgis.ST_Intersects(rast,$1) '
+                USING rowrecorda.the_geom, year_in, month_in, spi_reclass, bandtype INTO spirast;
+
+            spirast := ST_Clip(spirast,rowrecorda.the_geom,ST_BandNoDataValue(spirast),true);
+
+            m20 := postgis.ST_ValueCount(spirast,1,true,-20.0);
+            m15 := postgis.ST_ValueCount(spirast,1,true,-15.0);
+            m10 := postgis.ST_ValueCount(spirast,1,true,-10.0);
+            m0 := postgis.ST_ValueCount(spirast,1,true,0.0);
+            p10 := postgis.ST_ValueCount(spirast,1,true,10.0);
+            p15 := postgis.ST_ValueCount(spirast,1,true,15.0);
+            p20 := postgis.ST_ValueCount(spirast,1,true,20.0);
+            dtot := m20 + m15 + m10 + m0 + p10 + p15 + p20;
+
+            RAISE NOTICE '% - % % % % % % % - %',rowrecorda.regione,m20,m15,m10,m0,p10,p15,p20,dtot;
+
+            the_geom_o := rowrecorda.the_geom;
+            region_name_o := rowrecorda.regione;
+            hazard_class_o := -20.0;
+            count_o := m20;
+            perc_o := ROUND((m20 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+            the_geom_o := rowrecorda.the_geom;
+            region_name_o := rowrecorda.regione;
+            hazard_class_o := -15.0;
+            count_o := m15;
+            perc_o := ROUND((m15 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+            the_geom_o := rowrecorda.the_geom;
+            region_name_o := rowrecorda.regione;
+            hazard_class_o := -10.0;
+            count_o := m10;
+            perc_o := ROUND((m10 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+            the_geom_o := rowrecorda.the_geom;
+            region_name_o := rowrecorda.regione;
+            hazard_class_o := 0.0;
+            count_o := m0;
+            perc_o := ROUND((m0 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+            the_geom_o := rowrecorda.the_geom;
+            region_name_o := rowrecorda.regione;
+            hazard_class_o := 10.0;
+            count_o := p10;
+            perc_o := ROUND((p10 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+            the_geom_o := rowrecorda.the_geom;
+            region_name_o := rowrecorda.regione;
+            hazard_class_o := 15.0;
+            count_o := p15;
+            perc_o := ROUND((p15 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+            the_geom_o := rowrecorda.the_geom;
+            region_name_o := rowrecorda.regione;
+            hazard_class_o := 20.0;
+            count_o := p20;
+            perc_o := ROUND((p20 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+        END LOOP;
+
+END;
+$BODY$;
+
+
+CREATE OR REPLACE FUNCTION postgis.calc_spi_stats_over_eu(
+    month_in integer,
+    year_in integer,
+    spi_type character varying,
+    spi_reclass character varying)
+    RETURNS TABLE(region_name_o character varying, hazard_class_o double precision, count_o integer, perc_o double precision)
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+    ROWS 1000
+
+AS $BODY$
+
+DECLARE
+    spirast RASTER;
+
+    rowrecord RECORD;
+    rowrecorda RECORD;
+
+    bandtype varchar := '32BSI';
+    dtot bigint;
+
+    m20 integer;
+    m15 integer;
+    m10 integer;
+    m0 integer;
+    p10 integer;
+    p15 integer;
+    p20 integer;
+
+BEGIN
+    RAISE NOTICE 'Extract spi raster';
+
+    FOR rowrecorda IN SELECT name_engl as regione, the_geom FROM postgis.eu_boundaries ORDER BY name_engl
+        LOOP
+            EXECUTE 'SELECT postgis.ST_Reclass(postgis.ST_Union(rast),1,$4,$5) '||
+                    'FROM postgis.'||spi_type||' INNER JOIN postgis.acquisizioni USING (id_acquisizione) ' ||
+                    'WHERE extract(year from dtime) = $2 ' ||
+                    'AND extract(month from dtime) = $3 ' ||
+                    'AND postgis.ST_Intersects(rast,$1) '
+                USING rowrecorda.the_geom, year_in, month_in, spi_reclass, bandtype INTO spirast;
+
+            spirast := ST_Clip(spirast,rowrecorda.the_geom,ST_BandNoDataValue(spirast),true);
+
+            m20 := postgis.ST_ValueCount(spirast,1,true,-20.0);
+            m15 := postgis.ST_ValueCount(spirast,1,true,-15.0);
+            m10 := postgis.ST_ValueCount(spirast,1,true,-10.0);
+            m0 := postgis.ST_ValueCount(spirast,1,true,0.0);
+            p10 := postgis.ST_ValueCount(spirast,1,true,10.0);
+            p15 := postgis.ST_ValueCount(spirast,1,true,15.0);
+            p20 := postgis.ST_ValueCount(spirast,1,true,20.0);
+            dtot := m20 + m15 + m10 + m0 + p10 + p15 + p20;
+
+            RAISE NOTICE '% - % % % % % % % - %',rowrecorda.regione,m20,m15,m10,m0,p10,p15,p20,dtot;
+
+            region_name_o := rowrecorda.regione;
+            hazard_class_o := -20.0;
+            count_o := m20;
+            perc_o := ROUND((m20 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+            region_name_o := rowrecorda.regione;
+            hazard_class_o := -15.0;
+            count_o := m15;
+            perc_o := ROUND((m15 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+            region_name_o := rowrecorda.regione;
+            hazard_class_o := -10.0;
+            count_o := m10;
+            perc_o := ROUND((m10 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+            region_name_o := rowrecorda.regione;
+            hazard_class_o := 0.0;
+            count_o := m0;
+            perc_o := ROUND((m0 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+            region_name_o := rowrecorda.regione;
+            hazard_class_o := 10.0;
+            count_o := p10;
+            perc_o := ROUND((p10 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+            region_name_o := rowrecorda.regione;
+            hazard_class_o := 15.0;
+            count_o := p15;
+            perc_o := ROUND((p15 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+            region_name_o := rowrecorda.regione;
+            hazard_class_o := 20.0;
+            count_o := p20;
+            perc_o := ROUND((p20 * 100.0)/dtot, 2);
+
+            RETURN NEXT;
+
+        END LOOP;
+
+END;
+$BODY$;
+
+
 --calculate spi conditions over eu countries for given time interval
 CREATE OR REPLACE FUNCTION postgis.calc_spi_stats_over_eu(
     month_in integer,
@@ -204,7 +435,7 @@ DECLARE
 BEGIN
 
     dtime1 := to_timestamp(''||year_in||' '||month_in||' 01','YYYY MM DD');
-    dtime2 := to_timestamp(''||year2_in||' '||(month2_in + 1)||' 01','YYYY MM DD');
+    dtime2 := to_timestamp(''||year2_in||' '||(month2_in)||' 01','YYYY MM DD');
 
     RAISE NOTICE 'Extract spi raster from % to %',dtime1, dtime2;
 
@@ -344,7 +575,7 @@ DECLARE
 BEGIN
 
     dtime1 := to_timestamp(''||year_in||' '||month_in||' 01','YYYY MM DD');
-    dtime2 := to_timestamp(''||year2_in||' '||(month2_in + 1)||' 01','YYYY MM DD');
+    dtime2 := to_timestamp(''||year2_in||' '||(month2_in)||' 01','YYYY MM DD');
 
     RAISE NOTICE 'Extract spi raster from % to %',dtime1, dtime2;
 
@@ -488,7 +719,7 @@ DECLARE
 BEGIN
 
     dtime1 := to_timestamp(''||year_in||' '||month_in||' 01','YYYY MM DD');
-    dtime2 := to_timestamp(''||year2_in||' '||(month2_in + 1)||' 01','YYYY MM DD');
+    dtime2 := to_timestamp(''||year2_in||' '||(month2_in)||' 01','YYYY MM DD');
 
     RAISE NOTICE 'Extract spi raster from % to %',dtime1, dtime2;
 
@@ -1350,7 +1581,7 @@ BEGIN
                                     (foo).gv.x as pixelx,
                                     (foo).gv.y as pixely
                              FROM (SELECT postgis.ST_PixelAsPolygons(rowrecord_spi.ro,1,true) as gv  ) as foo
-                             WHERE  (foo).gv.val between -3.0 and 3.0
+                             WHERE  (foo).gv.val between -30 and 30
                 loop
 
                     the_geom_o := rowrecord.geom;
@@ -1425,6 +1656,147 @@ BEGIN
 
             RETURN NEXT;
 
+        END LOOP;
+
+END;
+$BODY$;
+
+-- calculate LST stats over regions
+--  INPUT
+--   begin month and year
+--   end month and year
+--   country name
+--  RETURNS
+--   eu_name , year, month, pixel count, mean, standard deviation, min and max
+
+
+
+CREATE OR REPLACE FUNCTION postgis.calc_lst_stats_over_regions(
+    month_in integer,
+    year_in integer,
+    month2_in integer,
+    year2_in integer,
+    country_in varchar)
+    RETURNS TABLE(region_name_o character varying, year_o integer, month_o integer, day_o integer,
+                  min_o double precision, max_o double precision, mean_o double precision,
+                  stddev_o double precision)
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+    ROWS 1000
+
+AS $BODY$
+
+DECLARE
+    spirast RASTER;
+    spistats summarystats;
+
+    rowrecord RECORD;
+    rowrecorda RECORD;
+
+    dtime1 timestamp;
+    dtime2 timestamp;
+
+BEGIN
+    RAISE NOTICE 'Extract spi raster';
+
+    dtime1 := to_timestamp(''||year_in||' '||month_in||' 01','YYYY MM DD');
+    dtime2 := to_timestamp(''||year2_in||' '||(month2_in)||' 01','YYYY MM DD');
+
+
+    FOR rowrecorda IN SELECT regione, reg_boundaries.the_geom as geom
+                      FROM reg_boundaries INNER JOIN eu_boundaries ON eu_boundaries.gid = reg_boundaries.id_eu_boundaries
+                      WHERE lower(name_engl) = country_in
+                      ORDER BY regione
+        LOOP
+            FOR rowrecord IN EXECUTE 'SELECT postgis.ST_Union(rast) as ro, extract(year from dtime) as yo,
+			extract(month from dtime) as mo, extract(day from dtime) as do '||
+                                     'FROM postgis.lst INNER JOIN postgis.acquisizioni USING (id_acquisizione) ' ||
+                                     'WHERE dtime between $2 and $3 ' ||
+                                     'AND postgis.ST_Intersects(rast,$1) group by 2,3,4 order by 2,3,4'
+                USING rowrecorda.geom, dtime1, dtime2 LOOP
+
+
+                    RAISE NOTICE 'clipping image % % %',rowrecord.yo,rowrecord.mo,rowrecord.do;
+                    spirast := ST_Clip(rowrecord.ro,rowrecorda.geom,ST_BandNoDataValue(spirast),true);
+                    RAISE NOTICE 'calculate stats image';
+                    spistats := ST_SummaryStatsAgg(spirast,1,true);
+
+                    region_name_o:=rowrecorda.regione;
+                    year_o := rowrecord.yo;
+                    month_o := rowrecord.mo;
+                    day_o := rowrecord.do;
+                    min_o:=(spistats.min * 0.02) - 273.15;
+                    max_o:=(spistats.max * 0.02) - 273.15;
+                    mean_o:=(spistats.mean * 0.02) - 273.15;
+                    stddev_o:=spistats.stddev;
+
+
+                    RETURN NEXT;
+                END LOOP;
+        END LOOP;
+
+END;
+$BODY$;
+
+CREATE OR REPLACE FUNCTION postgis.calc_lst_stats_over_eu(
+    month_in integer,
+    year_in integer,
+    month2_in integer,
+    year2_in integer)
+    RETURNS TABLE(region_name_o character varying, year_o integer, month_o integer, day_o integer, min_o double precision, max_o double precision, mean_o double precision, stddev_o double precision)
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE PARALLEL UNSAFE
+    ROWS 1000
+
+AS $BODY$
+
+DECLARE
+    spirast RASTER;
+    spistats summarystats;
+
+    rowrecord RECORD;
+    rowrecorda RECORD;
+    yearo integer;
+    montho integer;
+    dayo integer;
+
+    dtime1 timestamp;
+    dtime2 timestamp;
+
+BEGIN
+    RAISE NOTICE 'Extract spi raster';
+
+    dtime1 := to_timestamp(''||year_in||' '||month_in||' 01','YYYY MM DD');
+    dtime2 := to_timestamp(''||year2_in||' '||(month2_in)||' 01','YYYY MM DD');
+
+    FOR rowrecorda IN SELECT name_engl as regione, the_geom FROM postgis.eu_boundaries ORDER BY name_engl
+        LOOP
+            FOR rowrecord IN EXECUTE 'SELECT postgis.ST_Union(rast) as ro, extract(year from dtime) as yo,
+			extract(month from dtime) as mo, extract(day from dtime) as do '||
+                                     'FROM postgis.lst INNER JOIN postgis.acquisizioni USING (id_acquisizione) ' ||
+                                     'WHERE dtime between $2 and $3 ' ||
+                                     'AND postgis.ST_Intersects(rast,$1) group by 2,3,4 order by 2,3,4'
+                USING rowrecorda.the_geom, dtime1, dtime2 LOOP
+
+                    RAISE NOTICE 'clipping image % % %',rowrecord.yo,rowrecord.mo,rowrecord.do;
+                    spirast := ST_Clip(rowrecord.ro,rowrecorda.the_geom,ST_BandNoDataValue(spirast),true);
+                    RAISE NOTICE 'calculate stats image';
+                    spistats := ST_SummaryStatsAgg(spirast,1,true);
+
+                    region_name_o:=rowrecorda.regione;
+                    year_o := rowrecord.yo;
+                    month_o := rowrecord.mo;
+                    day_o := rowrecord.do;
+                    min_o:=(spistats.min * 0.02) - 273.15;
+                    max_o:=(spistats.max * 0.02) - 273.15;
+                    stddev_o:=spistats.stddev;
+                    mean_o:=(spistats.mean * 0.02) - 273.15;
+
+
+                    RETURN NEXT;
+                END LOOP;
         END LOOP;
 
 END;
